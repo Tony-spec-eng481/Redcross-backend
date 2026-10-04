@@ -10,6 +10,13 @@ import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
+import eventRoutes from './routes/eventRoutes.js';
+import galleryRoutes from './routes/galleryRoutes.js';
+import firstAidRoutes from './routes/firstAidRoutes.js';
+import messageRoutes from './routes/messageRoutes.js';
+import profileRoutes from './routes/profileRoutes.js';
+import { getLeaders, getHeroSlides } from './controllers/adminController.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 
 dotenv.config();
@@ -103,6 +110,32 @@ app.use('/api/v1/auth', authRoutes);
 // Admin API routes (all protected by JWT in the router)
 app.use('/api/v1/admin', adminRoutes);
 
+// Public and Portal endpoints
+app.use('/api/v1/events', eventRoutes);
+app.use('/api/events', eventRoutes);
+
+app.use('/api/v1/gallery', galleryRoutes);
+app.use('/api/gallery', galleryRoutes);
+
+app.use('/api/v1/firstaid', firstAidRoutes);
+app.use('/api/firstaid', firstAidRoutes);
+
+app.use('/api/v1/messages', messageRoutes);
+app.use('/api/messages', messageRoutes);
+
+app.use('/api/v1/profile', profileRoutes);
+app.use('/api/profile', profileRoutes);
+
+// Public endpoints for website frontend
+app.get('/api/v1/leaders', getLeaders);
+app.get('/api/leaders', getLeaders);
+app.get('/api/v1/hero', getHeroSlides);
+app.get('/api/hero', getHeroSlides);
+
+
+// Upload routes (Uploads directly to Supabase storage bucket)
+app.use('/api/v1/upload', uploadRoutes);
+
 // ═══════════════════════════════════════════════════════════
 // BACKWARD COMPATIBILITY ROUTES
 // These map the old /api/* endpoints the frontend currently uses
@@ -110,6 +143,7 @@ app.use('/api/v1/admin', adminRoutes);
 // ═══════════════════════════════════════════════════════════
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // ═══════════════════════════════════════════════════════════
 // ERROR HANDLING

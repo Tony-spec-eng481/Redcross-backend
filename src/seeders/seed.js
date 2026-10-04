@@ -66,7 +66,7 @@ async function seed() {
   console.log('   1. Email: admin@gmail.com     | Password: Admin1234');
   console.log('   2. Email: admin@kirinyaga.ac.ke | Password: Admin@123\n');
 
-  const adminId = seededAdmins?.[0]?.id || 'admin-test-001';
+  const adminId = seededAdmins?.[0]?.id || null;
 
   // ── 2. Seed Members ──
   const members = [
@@ -92,9 +92,9 @@ async function seed() {
 
   // ── 4. Seed Gallery ──
   const gallery = [
-    { title: 'First Aid Training 2024', type: 'image', url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800', status: 'approved', submitted_by: 'Jane Wanjiku' },
-    { title: 'Blood Drive at Student Center', type: 'image', url: 'https://images.unsplash.com/photo-1615461066841-6116e61058f4?w=800', status: 'approved', submitted_by: 'Peter Kamau' },
-    { title: 'Community Outreach Kerugoya', type: 'image', url: 'https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=800', status: 'pending', submitted_by: 'Mary Njeri' },
+    { title: 'First Aid Training 2024', type: 'image', image_url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=800', status: 'approved' },
+    { title: 'Blood Drive at Student Center', type: 'image', image_url: 'https://images.unsplash.com/photo-1615461066841-6116e61058f4?w=800', status: 'approved' },
+    { title: 'Community Outreach Kerugoya', type: 'image', image_url: 'https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=800', status: 'pending' },
   ];
 
   const { error: galErr } = await supabase.from('gallery').insert(gallery);

@@ -4,37 +4,11 @@ import { supabase } from '../config/supabase.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../src/utils/token.js';
 import { sendSuccess, sendError, AppError } from '../src/utils/response.js';
 import { asyncHandler } from '../src/utils/asyncHandler.js';
-
-// In-memory state for test users during development
-const testUsersState = {
-  admin: {
-    id: 'admin-test-001',
-    name: 'Red Cross Admin',
-    email: 'admin@gmail.com',
-    phone: '+254700123456',
-    role: 'superadmin',
-    avatar: null,
-    is_active: true,
-    last_login: new Date().toISOString(),
-    notification_preferences: { email: true, push: true, approvals: true, messages: true },
-    created_at: new Date().toISOString(),
-  },
-  member: {
-    id: 'member-test-001',
-    name: 'John Doe',
-    email: 'john@gmail.com',
-    phone: '+254712345678',
-    role: 'Member',
-    avatar: null,
-    status: 'active',
-    joined: '2024-01-15',
-    created_at: new Date().toISOString(),
-  }
-};
+import { sendPasswordResetEmail } from '../src/services/emailService.js';
 
 /**
  * POST /api/v1/auth/login
- * Authenticate admin or member with email + password, return JWT tokens
+ * Authenticate admin with email + password from Supabase, return JWT tokens
  */
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -45,133 +19,71 @@ export const login = asyncHandler(async (req, res) => {
 
   const normalizedEmail = email.toLowerCase().trim();
 
-  // ── TEST LOGIN 1: ADMIN (admin@gmail.com / Admin1234) ──
-  if (normalizedEmail === 'admin@gmail.com' && password === 'Admin1234') {
-    const tokenPayload = {
-      id: testUsersState.admin.id,
-      email: testUsersState.admin.email,
-      role: testUsersState.admin.role,
-      name: testUsersState.admin.name,
-    };
-    const accessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(tokenPayload);
+  // Database lookup via Supabase
+  const { data: admin, error } = await supabase
+    .from('admins')
+    .select('*')
+    .eq('email', normalizedEmail)
+    .single();
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: 'Admin test login successful.',
-      token: accessToken,
-      accessToken,
-      refreshToken,
-      data: {
-        accessToken,
-        refreshToken,
-        admin: testUsersState.admin,
-      },
-    });
-  }
-
-  // ── TEST LOGIN 2: MEMBER (john@gmail.com / John1234) ──
-  if (normalizedEmail === 'john@gmail.com' && password === 'John1234') {
-    const tokenPayload = {
-      id: testUsersState.member.id,
-      email: testUsersState.member.email,
-      role: testUsersState.member.role,
-      name: testUsersState.member.name,
-    };
-    const accessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(tokenPayload);
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: 'Member test login successful.',
-      token: accessToken,
-      accessToken,
-      refreshToken,
-      member: testUsersState.member,
-      data: {
-        accessToken,
-        refreshToken,
-        member: testUsersState.member,
-      },
-    });
-  }
-
-  // ── DATABASE LOOKUP (If Supabase is connected) ──
-  try {
-    const { data: admin, error } = await supabase
-      .from('admins')
-      .select('*')
-      .eq('email', normalizedEmail)
-      .single();
-
-    if (error || !admin) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return sendError(res, 'Invalid email or password.', 401);
-    }
-
-    if (!admin.is_active) {
-      return sendError(res, 'Your account has been deactivated. Contact a superadmin.', 403);
-    }
-
-    const isMatch = await bcrypt.compare(password, admin.password_hash);
-    if (!isMatch) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return sendError(res, 'Invalid email or password.', 401);
-    }
-
-    const tokenPayload = { id: admin.id, email: admin.email, role: admin.role, name: admin.name };
-    const accessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(tokenPayload);
-
-    const currentTokens = admin.refresh_tokens || [];
-    const updatedTokens = [...currentTokens.slice(-4), refreshToken];
-
-    await supabase
-      .from('admins')
-      .update({
-        refresh_tokens: updatedTokens,
-        last_login: new Date().toISOString(),
-      })
-      .eq('id', admin.id);
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    const { password_hash, refresh_tokens, password_reset_token, password_reset_expires, ...safeAdmin } = admin;
-
-    return res.status(200).json({
-      success: true,
-      message: 'Login successful.',
-      token: accessToken,
-      accessToken,
-      refreshToken,
-      data: {
-        accessToken,
-        refreshToken,
-        admin: safeAdmin,
-      },
-    });
-  } catch {
+  if (error || !admin) {
+    // Prevent timing attacks
+    await new Promise((resolve) => setTimeout(resolve, 200));
     return sendError(res, 'Invalid email or password.', 401);
   }
+
+  if (!admin.is_active) {
+    return sendError(res, 'Your account has been deactivated. Contact a superadmin.', 403);
+  }
+
+  const isMatch = await bcrypt.compare(password, admin.password_hash);
+  if (!isMatch) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return sendError(res, 'Invalid email or password.', 401);
+  }
+
+  const tokenPayload = {
+    id: admin.id,
+    email: admin.email,
+    role: admin.role,
+    name: admin.name,
+  };
+  const accessToken = generateAccessToken(tokenPayload);
+  const refreshToken = generateRefreshToken(tokenPayload);
+
+  const currentTokens = Array.isArray(admin.refresh_tokens) ? admin.refresh_tokens : [];
+  const updatedTokens = [...currentTokens.slice(-4), refreshToken];
+
+  await supabase
+    .from('admins')
+    .update({
+      refresh_tokens: updatedTokens,
+      last_login: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', admin.id);
+
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  const { password_hash, refresh_tokens, password_reset_token, password_reset_expires, ...safeAdmin } = admin;
+
+  return res.status(200).json({
+    success: true,
+    message: 'Login successful.',
+    token: accessToken,
+    accessToken,
+    refreshToken,
+    data: {
+      accessToken,
+      refreshToken,
+      admin: safeAdmin,
+    },
+  });
 });
 
 /**
@@ -180,7 +92,7 @@ export const login = asyncHandler(async (req, res) => {
 export const logout = asyncHandler(async (req, res) => {
   const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
-  if (refreshToken && req.admin && req.admin.id !== 'admin-test-001' && req.admin.id !== 'member-test-001') {
+  if (refreshToken && req.admin?.id) {
     try {
       const { data: admin } = await supabase
         .from('admins')
@@ -188,11 +100,14 @@ export const logout = asyncHandler(async (req, res) => {
         .eq('id', req.admin.id)
         .single();
 
-      if (admin) {
-        const updatedTokens = (admin.refresh_tokens || []).filter(t => t !== refreshToken);
+      if (admin && Array.isArray(admin.refresh_tokens)) {
+        const updatedTokens = admin.refresh_tokens.filter((t) => t !== refreshToken);
         await supabase
           .from('admins')
-          .update({ refresh_tokens: updatedTokens })
+          .update({
+            refresh_tokens: updatedTokens,
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', req.admin.id);
       }
     } catch {
@@ -221,72 +136,56 @@ export const refresh = asyncHandler(async (req, res) => {
     return sendError(res, 'Invalid or expired refresh token.', 401);
   }
 
-  // Handle test admin
-  if (decoded.id === 'admin-test-001') {
-    const tokenPayload = { id: testUsersState.admin.id, email: testUsersState.admin.email, role: testUsersState.admin.role, name: testUsersState.admin.name };
-    const newAccessToken = generateAccessToken(tokenPayload);
-    const newRefreshToken = generateRefreshToken(tokenPayload);
-    return sendSuccess(res, 'Token refreshed.', {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      admin: testUsersState.admin,
-    });
+  const { data: admin, error } = await supabase
+    .from('admins')
+    .select('*')
+    .eq('id', decoded.id)
+    .single();
+
+  if (error || !admin || !Array.isArray(admin.refresh_tokens) || !admin.refresh_tokens.includes(oldRefreshToken)) {
+    return sendError(res, 'Refresh token has been revoked or expired.', 401);
   }
 
-  // Handle test member
-  if (decoded.id === 'member-test-001') {
-    const tokenPayload = { id: testUsersState.member.id, email: testUsersState.member.email, role: testUsersState.member.role, name: testUsersState.member.name };
-    const newAccessToken = generateAccessToken(tokenPayload);
-    const newRefreshToken = generateRefreshToken(tokenPayload);
-    return sendSuccess(res, 'Token refreshed.', {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      member: testUsersState.member,
-    });
+  if (!admin.is_active) {
+    return sendError(res, 'Account is inactive.', 403);
   }
 
-  try {
-    const { data: admin } = await supabase
-      .from('admins')
-      .select('*')
-      .eq('id', decoded.id)
-      .single();
+  const tokenPayload = {
+    id: admin.id,
+    email: admin.email,
+    role: admin.role,
+    name: admin.name,
+  };
+  const newAccessToken = generateAccessToken(tokenPayload);
+  const newRefreshToken = generateRefreshToken(tokenPayload);
 
-    if (!admin || !(admin.refresh_tokens || []).includes(oldRefreshToken)) {
-      return sendError(res, 'Refresh token has been revoked.', 401);
-    }
+  const updatedTokens = admin.refresh_tokens
+    .filter((t) => t !== oldRefreshToken)
+    .concat(newRefreshToken)
+    .slice(-5);
 
-    const tokenPayload = { id: admin.id, email: admin.email, role: admin.role, name: admin.name };
-    const newAccessToken = generateAccessToken(tokenPayload);
-    const newRefreshToken = generateRefreshToken(tokenPayload);
+  await supabase
+    .from('admins')
+    .update({
+      refresh_tokens: updatedTokens,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', admin.id);
 
-    const updatedTokens = (admin.refresh_tokens || [])
-      .filter(t => t !== oldRefreshToken)
-      .concat(newRefreshToken)
-      .slice(-5);
+  res.cookie('refreshToken', newRefreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
 
-    await supabase
-      .from('admins')
-      .update({ refresh_tokens: updatedTokens })
-      .eq('id', admin.id);
+  const { password_hash, refresh_tokens, password_reset_token, password_reset_expires, ...safeAdmin } = admin;
 
-    res.cookie('refreshToken', newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    const { password_hash, refresh_tokens, password_reset_token, password_reset_expires, ...safeAdmin } = admin;
-
-    return sendSuccess(res, 'Token refreshed.', {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-      admin: safeAdmin,
-    });
-  } catch {
-    return sendError(res, 'Failed to refresh token.', 401);
-  }
+  return sendSuccess(res, 'Token refreshed.', {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+    admin: safeAdmin,
+  });
 });
 
 /**
@@ -296,38 +195,45 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
   if (!email) return sendError(res, 'Email is required.', 400);
 
-  if (email.toLowerCase().trim() === 'admin@gmail.com') {
-    return sendSuccess(res, 'If that email exists, a reset link has been sent.');
-  }
+  const normalizedEmail = email.toLowerCase().trim();
 
   try {
     const { data: admin } = await supabase
       .from('admins')
-      .select('id')
-      .eq('email', email.toLowerCase().trim())
+      .select('id, name, email')
+      .eq('email', normalizedEmail)
       .single();
 
-    if (!admin) {
-      return sendSuccess(res, 'If that email exists, a reset link has been sent.');
+    if (admin) {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+      await supabase
+        .from('admins')
+        .update({
+          password_reset_token: hashedToken,
+          password_reset_expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', admin.id);
+
+      console.log(`🔑 Generated reset token for ${admin.email}`);
+
+      // Dispatch Brevo email
+      sendPasswordResetEmail({
+        email: admin.email,
+        name: admin.name || 'Administrator',
+        resetToken,
+        userType: 'admin',
+      }).catch((emailErr) => {
+        console.error('Failed to send password reset email via Brevo:', emailErr);
+      });
     }
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-
-    await supabase
-      .from('admins')
-      .update({
-        password_reset_token: hashedToken,
-        password_reset_expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      })
-      .eq('id', admin.id);
-
-    console.log(`Password reset token for ${email}: ${resetToken}`);
-  } catch {
-    // Keep silent
+  } catch (err) {
+    console.error('Error in forgotPassword handler:', err);
   }
 
-  return sendSuccess(res, 'If that email exists, a reset link has been sent.');
+  return sendSuccess(res, 'If an account exists with that email address, a password reset link has been dispatched.');
 });
 
 /**
@@ -341,6 +247,35 @@ export const resetPassword = asyncHandler(async (req, res) => {
   if (password !== confirmPassword) return sendError(res, 'Passwords do not match.', 400);
   if (password.length < 6) return sendError(res, 'Password must be at least 6 characters.', 400);
 
+  const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+  const { data: admin, error } = await supabase
+    .from('admins')
+    .select('id, password_reset_expires')
+    .eq('password_reset_token', hashedToken)
+    .single();
+
+  if (error || !admin) {
+    return sendError(res, 'Password reset token is invalid or has expired.', 400);
+  }
+
+  if (new Date(admin.password_reset_expires) < new Date()) {
+    return sendError(res, 'Password reset token has expired.', 400);
+  }
+
+  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+  const passwordHash = await bcrypt.hash(password, saltRounds);
+
+  await supabase
+    .from('admins')
+    .update({
+      password_hash: passwordHash,
+      password_reset_token: null,
+      password_reset_expires: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', admin.id);
+
   return sendSuccess(res, 'Password reset successful. You can now log in.');
 });
 
@@ -348,28 +283,17 @@ export const resetPassword = asyncHandler(async (req, res) => {
  * GET /api/v1/auth/me
  */
 export const getMe = asyncHandler(async (req, res) => {
-  if (req.admin?.id === 'admin-test-001') {
-    return sendSuccess(res, 'Profile fetched.', testUsersState.admin);
-  }
-  if (req.admin?.id === 'member-test-001') {
-    return sendSuccess(res, 'Profile fetched.', testUsersState.member);
+  const { data: admin, error } = await supabase
+    .from('admins')
+    .select('id, name, email, phone, role, avatar, is_active, last_login, notification_preferences, created_at')
+    .eq('id', req.admin.id)
+    .single();
+
+  if (error || !admin) {
+    return sendError(res, 'Admin profile not found.', 404);
   }
 
-  try {
-    const { data: admin, error } = await supabase
-      .from('admins')
-      .select('id, name, email, phone, role, avatar, is_active, last_login, notification_preferences, created_at')
-      .eq('id', req.admin.id)
-      .single();
-
-    if (error || !admin) {
-      return sendSuccess(res, 'Profile fetched.', testUsersState.admin);
-    }
-
-    return sendSuccess(res, 'Profile fetched.', admin);
-  } catch {
-    return sendSuccess(res, 'Profile fetched.', testUsersState.admin);
-  }
+  return sendSuccess(res, 'Profile fetched.', admin);
 });
 
 /**
@@ -378,34 +302,25 @@ export const getMe = asyncHandler(async (req, res) => {
 export const updateMe = asyncHandler(async (req, res) => {
   const { name, phone, avatar } = req.body;
 
-  if (req.admin?.id === 'admin-test-001') {
-    if (name !== undefined) testUsersState.admin.name = name;
-    if (phone !== undefined) testUsersState.admin.phone = phone;
-    if (avatar !== undefined) testUsersState.admin.avatar = avatar;
-    return sendSuccess(res, 'Profile updated.', testUsersState.admin);
+  const updates = {
+    updated_at: new Date().toISOString(),
+  };
+  if (name !== undefined) updates.name = name;
+  if (phone !== undefined) updates.phone = phone;
+  if (avatar !== undefined) updates.avatar = avatar;
+
+  const { data, error } = await supabase
+    .from('admins')
+    .update(updates)
+    .eq('id', req.admin.id)
+    .select('id, name, email, phone, role, avatar, is_active, last_login, notification_preferences, created_at')
+    .single();
+
+  if (error) {
+    return sendError(res, 'Failed to update profile: ' + error.message, 500);
   }
 
-  try {
-    const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (phone !== undefined) updates.phone = phone;
-    if (avatar !== undefined) updates.avatar = avatar;
-    updates.updated_at = new Date().toISOString();
-
-    const { data, error } = await supabase
-      .from('admins')
-      .update(updates)
-      .eq('id', req.admin.id)
-      .select('id, name, email, phone, role, avatar, is_active, last_login, notification_preferences, created_at')
-      .single();
-
-    if (error) return sendError(res, 'Failed to update profile.', 500);
-    return sendSuccess(res, 'Profile updated.', data);
-  } catch {
-    if (name !== undefined) testUsersState.admin.name = name;
-    if (phone !== undefined) testUsersState.admin.phone = phone;
-    return sendSuccess(res, 'Profile updated.', testUsersState.admin);
-  }
+  return sendSuccess(res, 'Profile updated.', data);
 });
 
 /**
@@ -422,37 +337,37 @@ export const changePassword = asyncHandler(async (req, res) => {
     return sendError(res, 'New password must be at least 6 characters.', 400);
   }
 
-  if (req.admin?.id === 'admin-test-001') {
-    if (currentPassword !== 'Admin1234') {
-      return sendError(res, 'Current password is incorrect.', 400);
-    }
-    return sendSuccess(res, 'Password changed successfully.');
+  const { data: admin, error } = await supabase
+    .from('admins')
+    .select('password_hash')
+    .eq('id', req.admin.id)
+    .single();
+
+  if (error || !admin) {
+    return sendError(res, 'Admin not found.', 404);
   }
 
-  try {
-    const { data: admin } = await supabase
-      .from('admins')
-      .select('password_hash')
-      .eq('id', req.admin.id)
-      .single();
-
-    const isMatch = await bcrypt.compare(currentPassword, admin.password_hash);
-    if (!isMatch) {
-      return sendError(res, 'Current password is incorrect.', 400);
-    }
-
-    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
-    const passwordHash = await bcrypt.hash(newPassword, saltRounds);
-
-    await supabase
-      .from('admins')
-      .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
-      .eq('id', req.admin.id);
-
-    return sendSuccess(res, 'Password changed successfully.');
-  } catch {
-    return sendSuccess(res, 'Password changed successfully.');
+  const isMatch = await bcrypt.compare(currentPassword, admin.password_hash);
+  if (!isMatch) {
+    return sendError(res, 'Current password is incorrect.', 400);
   }
+
+  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+  const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+  const { error: updateErr } = await supabase
+    .from('admins')
+    .update({
+      password_hash: passwordHash,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', req.admin.id);
+
+  if (updateErr) {
+    return sendError(res, 'Failed to change password: ' + updateErr.message, 500);
+  }
+
+  return sendSuccess(res, 'Password changed successfully.');
 });
 
 /**
@@ -460,34 +375,35 @@ export const changePassword = asyncHandler(async (req, res) => {
  */
 export const updateNotificationPreferences = asyncHandler(async (req, res) => {
   const { email, push, approvals, messages } = req.body;
-  const prefs = {};
-  if (email !== undefined) prefs.email = email;
-  if (push !== undefined) prefs.push = push;
-  if (approvals !== undefined) prefs.approvals = approvals;
-  if (messages !== undefined) prefs.messages = messages;
 
-  if (req.admin?.id === 'admin-test-001') {
-    testUsersState.admin.notification_preferences = {
-      ...testUsersState.admin.notification_preferences,
-      ...prefs,
-    };
-    return sendSuccess(res, 'Notification preferences updated.', testUsersState.admin.notification_preferences);
+  const { data: currentAdmin } = await supabase
+    .from('admins')
+    .select('notification_preferences')
+    .eq('id', req.admin.id)
+    .single();
+
+  const currentPrefs = currentAdmin?.notification_preferences || {};
+  const newPrefs = {
+    ...currentPrefs,
+    ...(email !== undefined && { email }),
+    ...(push !== undefined && { push }),
+    ...(approvals !== undefined && { approvals }),
+    ...(messages !== undefined && { messages }),
+  };
+
+  const { data, error } = await supabase
+    .from('admins')
+    .update({
+      notification_preferences: newPrefs,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', req.admin.id)
+    .select('notification_preferences')
+    .single();
+
+  if (error) {
+    return sendError(res, 'Failed to update preferences: ' + error.message, 500);
   }
 
-  try {
-    const { data, error } = await supabase
-      .from('admins')
-      .update({
-        notification_preferences: prefs,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', req.admin.id)
-      .select('notification_preferences')
-      .single();
-
-    if (error) return sendError(res, 'Failed to update preferences.', 500);
-    return sendSuccess(res, 'Notification preferences updated.', data.notification_preferences);
-  } catch {
-    return sendSuccess(res, 'Notification preferences updated.', prefs);
-  }
+  return sendSuccess(res, 'Notification preferences updated.', data?.notification_preferences || newPrefs);
 });

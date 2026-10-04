@@ -17,6 +17,11 @@ router.get('/members/:id', ctrl.getMember);
 router.post('/members', ctrl.createMember);
 router.patch('/members/:id', ctrl.updateMember);
 router.patch('/members/:id/status', ctrl.updateMemberStatus);
+router.patch('/members/:id/accept', ctrl.acceptMember);
+router.patch('/members/:id/approve', ctrl.approveMember);
+router.patch('/members/:id/reject', ctrl.rejectMember);
+router.patch('/members/:id/activate', ctrl.activateMember);
+router.patch('/members/:id/deactivate', ctrl.deactivateMember);
 router.delete('/members/:id', ctrl.deleteMember);
 
 // ── Events ──
@@ -31,8 +36,10 @@ router.delete('/events/:id', ctrl.deleteEvent);
 // ── Gallery ──
 router.get('/gallery', ctrl.getGallery);
 router.post('/gallery', ctrl.createGalleryItem);
+router.patch('/gallery/:id', ctrl.updateGalleryItem);
 router.patch('/gallery/:id/approve', ctrl.approveGalleryItem);
 router.patch('/gallery/:id/reject', ctrl.rejectGalleryItem);
+router.patch('/gallery/:id/favourite', ctrl.toggleGalleryFavourite);
 router.delete('/gallery/:id', ctrl.deleteGalleryItem);
 
 // ── First Aid ──
@@ -62,4 +69,20 @@ router.patch('/notifications/:id/read', ctrl.markNotificationRead);
 router.patch('/notifications/read-all', ctrl.markAllNotificationsRead);
 router.delete('/notifications/:id', ctrl.deleteNotification);
 
+// ── Leaders ──
+router.get('/leaders', ctrl.getLeaders);
+router.get('/leaders/:id', ctrl.getLeader);
+router.post('/leaders', ctrl.createLeader);
+router.patch('/leaders/:id', ctrl.updateLeader);
+router.delete('/leaders/:id', ctrl.deleteLeader);
+
+// ── Hero Slides ──
+router.get('/hero', ctrl.getHeroSlides);
+router.get('/hero/:id', ctrl.getHeroSlide);
+router.post('/hero', ctrl.createHeroSlide);
+router.patch('/hero/:id', ctrl.updateHeroSlide);
+router.delete('/hero/:id', ctrl.deleteHeroSlide);
+
 export default router;
+
+

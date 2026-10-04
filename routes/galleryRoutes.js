@@ -1,8 +1,23 @@
 import express from 'express';
-import { getGallery, submitImage } from '../controllers/galleryController.js';
+import {
+  getPublicGallery,
+  getMemberGallery,
+  getMyGallery,
+  submitGalleryItem,
+  updateMemberGalleryItem,
+  deleteMemberGalleryItem
+} from '../controllers/galleryController.js';
+
 const router = express.Router();
 
-router.get('/', getGallery);
-router.post('/', submitImage);
+// Public frontend — only approved + favourited items
+router.get('/', getPublicGallery);
+
+// Member portal routes
+router.get('/member/:memberId', getMemberGallery);
+router.get('/my/:memberId', getMyGallery);
+router.post('/submit', submitGalleryItem);
+router.patch('/member/:id', updateMemberGalleryItem);
+router.delete('/member/:id', deleteMemberGalleryItem);
 
 export default router;

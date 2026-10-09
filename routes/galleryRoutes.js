@@ -4,6 +4,7 @@ import {
   getMemberGallery,
   getMyGallery,
   submitGalleryItem,
+  submitMultipleGalleryItems,
   updateMemberGalleryItem,
   deleteMemberGalleryItem
 } from '../controllers/galleryController.js';
@@ -17,6 +18,7 @@ router.get('/', getPublicGallery);
 router.get('/member/:memberId', getMemberGallery);
 router.get('/my/:memberId', getMyGallery);
 router.post('/submit', submitGalleryItem);
+router.post('/submit-multiple', submitMultipleGalleryItems);
 router.patch('/member/:id', updateMemberGalleryItem);
 router.delete('/member/:id', deleteMemberGalleryItem);
 

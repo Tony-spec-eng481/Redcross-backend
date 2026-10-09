@@ -542,3 +542,97 @@ export function broadcastAnnouncementTemplate({
     content,
   });
 }
+
+/**
+ * 6. Member Registration Welcome Template
+ * Sent to newly registered members with default password and guide on changing password in profile.
+ */
+export function memberWelcomeTemplate({
+  name = 'Valued Member',
+  email,
+  defaultPassword = 'Redcross',
+  role = 'Member',
+  loginUrl = 'http://localhost:5173/login',
+  profileUrl = 'http://localhost:5173/portal/profile',
+}) {
+  const content = `
+    <h2 style="margin-top: 0; color: #111827; font-size: 20px; font-weight: 700;">
+      🎉 Welcome to the Kenya Red Cross Society!
+    </h2>
+    <p style="color: #374151; font-size: 15px;">
+      Hello <strong>${name}</strong>,
+    </p>
+    <p style="color: #4B5563; font-size: 14px; line-height: 1.6;">
+      You have been officially registered as a <strong>${role}</strong> of the <strong>Kenya Red Cross Society — Kirinyaga University Chapter</strong>. Your member account has been created and is ready for login.
+    </p>
+
+    <!-- Account Credentials Card -->
+    <div class="info-card" style="background-color: #FEF2F2; border-left: 4px solid ${RED_CROSS_RED}; padding: 18px 20px;">
+      <h3 style="margin-top: 0; margin-bottom: 12px; color: ${RED_CROSS_DARK}; font-size: 15px;">
+        🔐 Your Account Login Credentials
+      </h3>
+      <div class="info-row">
+        <span class="info-label">Portal Email:</span>
+        <span class="info-val"><strong>${email}</strong></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Default Password:</span>
+        <span class="info-val"><strong style="font-family: monospace; font-size: 15px; color: ${RED_CROSS_RED}; background: #ffffff; padding: 2px 8px; border-radius: 4px; border: 1px dashed ${RED_CROSS_RED};">${defaultPassword}</strong></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Chapter Role:</span>
+        <span class="info-val"><strong>${role}</strong></span>
+      </div>
+    </div>
+
+    <!-- Login CTA Button -->
+    <div class="btn-container">
+      <a href="${loginUrl}" class="btn">
+        🚀 Log In to Member Portal
+      </a>
+    </div>
+
+    <!-- Step-by-step Guide to Change Password -->
+    <div style="background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin: 24px 0;">
+      <h3 style="margin-top: 0; color: #111827; font-size: 15px; font-weight: 700; display: flex; align-items: center;">
+        📋 How to Change Your Password in Your Profile Section:
+      </h3>
+      <ol style="color: #4B5563; font-size: 13.5px; padding-left: 20px; margin-bottom: 0; line-height: 1.7;">
+        <li style="margin-bottom: 8px;">
+          Go to the <strong><a href="${loginUrl}" style="color: ${RED_CROSS_RED}; font-weight: 600;">Member Portal Login</a></strong> and sign in with your email (<code>${email}</code>) and default password: <strong><code>${defaultPassword}</code></strong>.
+        </li>
+        <li style="margin-bottom: 8px;">
+          Click on your <strong>Profile</strong> icon in the top-right corner or select <strong>Profile</strong> from the sidebar navigation menu.
+        </li>
+        <li style="margin-bottom: 8px;">
+          Navigate to the <strong>"Change Password"</strong> section in your profile.
+        </li>
+        <li style="margin-bottom: 8px;">
+          Enter your current temporary password (<strong><code>${defaultPassword}</code></strong>), then enter your new secure password and confirm it.
+        </li>
+        <li>
+          Click <strong>"Update Password"</strong> to save your new confidential password.
+        </li>
+      </ol>
+    </div>
+
+    <div class="alert-box">
+      💡 <strong>Important Security Tip:</strong><br/>
+      For your security, please update your default password immediately upon your first login.
+    </div>
+
+    <p style="color: #4B5563; font-size: 14px; margin-top: 24px;">
+      We are thrilled to have you as part of our humanitarian mission.<br/><br/>
+      Warm regards,<br/>
+      <strong>Executive Committee & Administration</strong><br/>
+      Kenya Red Cross Society — Kirinyaga University Chapter
+    </p>
+  `;
+
+  return emailLayout({
+    title: 'Welcome to Kenya Red Cross KyU Chapter — Account Details & Access Guide',
+    preheader: `Welcome to Kenya Red Cross KyU Chapter! Your temporary password is "${defaultPassword}". Log in and secure your account.`,
+    content,
+  });
+}
+

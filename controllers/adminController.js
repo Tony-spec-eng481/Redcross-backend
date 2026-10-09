@@ -1,7 +1,8 @@
+import bcrypt from 'bcryptjs';
 import { supabase } from '../config/supabase.js';
 import { sendSuccess, sendError } from '../src/utils/response.js';
 import { asyncHandler } from '../src/utils/asyncHandler.js';
-import { sendDirectMessageEmail, sendBroadcastEmail } from '../src/services/emailService.js';
+import { sendDirectMessageEmail, sendBroadcastEmail, sendMemberWelcomeEmail } from '../src/services/emailService.js';
 
 // Helper to format gallery item with both url and image_url
 const formatGallery = (item) => {
@@ -222,8 +223,12 @@ export const getMember = asyncHandler(async (req, res) => {
 });
 
 export const createMember = asyncHandler(async (req, res) => {
-  const { name, email, phone, role, status, notes, avatar, joined } = req.body;
+  const { name, email, phone, role, status, notes, avatar, joined, password } = req.body;
   if (!name || !email) return sendError(res, 'Name and email are required.', 400);
+
+  const initialPassword = password && password.trim() ? password.trim() : 'Redcross';
+  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+  const passwordHash = await bcrypt.hash(initialPassword, saltRounds);
 
   const newMember = {
     name: name.trim(),
@@ -233,6 +238,8 @@ export const createMember = asyncHandler(async (req, res) => {
     status: status || 'active',
     notes: notes ? notes.trim() : '',
     avatar: avatar || null,
+    password_hash: passwordHash,
+    is_active: status !== 'inactive' && status !== 'rejected',
     joined: joined || new Date().toISOString(),
     created_by: req.admin?.id || null,
     created_at: new Date().toISOString(),
@@ -252,7 +259,74 @@ export const createMember = asyncHandler(async (req, res) => {
     return sendError(res, 'Failed to create member: ' + error.message, 400);
   }
 
-  return sendSuccess(res, 'Member created successfully.', data, 201);
+  // Dispatch Brevo welcome email with default password and guide to change password in profile
+  sendMemberWelcomeEmail({
+    email: newMember.email,
+    name: newMember.name,
+    defaultPassword: initialPassword,
+    role: newMember.role,
+  }).catch((emailErr) => {
+    console.error('Failed to dispatch member welcome email via Brevo:', emailErr);
+  });
+
+  const { password_hash, password_reset_token, ...safeData } = data;
+  return sendSuccess(res, 'Member created successfully and onboarding email sent.', safeData, 201);
+});
+
+export const resetMemberPassword = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { newPassword } = req.body;
+
+  const resetPwd = newPassword && newPassword.trim() ? newPassword.trim() : 'Redcross';
+  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+  const passwordHash = await bcrypt.hash(resetPwd, saltRounds);
+
+  if (isAdminTarget(id)) {
+    const rawId = extractAdminId(id);
+    const { data: admin, error } = await supabase
+      .from('admins')
+      .update({
+        password_hash: passwordHash,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', rawId)
+      .select('id, name, email, role')
+      .single();
+
+    if (error || !admin) return sendError(res, 'Admin account not found.', 404);
+
+    sendMemberWelcomeEmail({
+      email: admin.email,
+      name: admin.name,
+      defaultPassword: resetPwd,
+      role: admin.role,
+    }).catch(console.error);
+
+    return sendSuccess(res, `Admin password reset to "${resetPwd}" and notification dispatched.`);
+  }
+
+  const { data: member, error } = await supabase
+    .from('members')
+    .update({
+      password_hash: passwordHash,
+      password_reset_token: null,
+      password_reset_expires: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select('id, name, email, role')
+    .single();
+
+  if (error || !member) return sendError(res, 'Member not found.', 404);
+
+  sendMemberWelcomeEmail({
+    email: member.email,
+    name: member.name,
+    defaultPassword: resetPwd,
+    role: member.role,
+  }).catch(console.error);
+
+  return sendSuccess(res, `Member password reset to "${resetPwd}" and credentials email dispatched.`);
 });
 
 export const updateMember = asyncHandler(async (req, res) => {
@@ -270,6 +344,10 @@ export const updateMember = asyncHandler(async (req, res) => {
     if (req.body.role) {
       if (req.body.role === 'Super Admin' || req.body.role === 'superadmin') adminUpdates.role = 'superadmin';
       else if (req.body.role === 'Admin' || req.body.role === 'admin') adminUpdates.role = 'admin';
+    }
+    if (req.body.password && req.body.password.trim().length >= 6) {
+      const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+      adminUpdates.password_hash = await bcrypt.hash(req.body.password.trim(), saltRounds);
     }
 
     const { data: updatedAdmin, error } = await supabase
@@ -307,6 +385,11 @@ export const updateMember = asyncHandler(async (req, res) => {
   if (updates.name) {
     updates.name = updates.name.trim();
   }
+  if (updates.password && updates.password.trim().length >= 6) {
+    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+    updates.password_hash = await bcrypt.hash(updates.password.trim(), saltRounds);
+    delete updates.password;
+  }
 
   const { data, error } = await supabase
     .from('members')
@@ -316,7 +399,8 @@ export const updateMember = asyncHandler(async (req, res) => {
     .single();
 
   if (error || !data) return sendError(res, error ? error.message : 'Failed to update member or member not found.', 400);
-  return sendSuccess(res, 'Member updated successfully.', data);
+  const { password_hash, password_reset_token, ...safeData } = data;
+  return sendSuccess(res, 'Member updated successfully.', safeData);
 });
 
 export const updateMemberStatus = asyncHandler(async (req, res) => {
@@ -665,6 +749,36 @@ export const getGallery = asyncHandler(async (req, res) => {
 });
 
 export const createGalleryItem = asyncHandler(async (req, res) => {
+  // Support batch creation if items array is provided
+  if (Array.isArray(req.body.items) && req.body.items.length > 0) {
+    const items = req.body.items.map(item => ({
+      title: item.title || 'New Photo',
+      image_url: item.image_url || item.url,
+      type: item.type || 'image',
+      category: item.category || 'General',
+      description: item.description || '',
+      status: 'approved',
+      is_favourite: item.is_favourite !== undefined ? item.is_favourite : false,
+      submitted_by: req.admin?.id || null,
+      approved_by: req.admin?.id || null,
+      submitted_by_name: 'Admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })).filter(i => i.image_url);
+
+    if (items.length === 0) {
+      return sendError(res, 'No valid images provided.', 400);
+    }
+
+    const { data, error } = await supabase
+      .from('gallery')
+      .insert(items)
+      .select();
+
+    if (error) return sendError(res, 'Failed to create gallery items: ' + error.message, 400);
+    return sendSuccess(res, `${data.length} gallery items uploaded.`, data.map(formatGallery), 201);
+  }
+
   const { title, url, image_url, type, category, description, is_favourite } = req.body;
   const img = image_url || url;
   if (!img) return sendError(res, 'Image URL is required.', 400);
@@ -1511,4 +1625,116 @@ export const deleteHeroSlide = asyncHandler(async (req, res) => {
   fallbackHeroSlides = fallbackHeroSlides.filter((s) => String(s.id) !== String(id));
   return sendSuccess(res, 'Hero slide deleted successfully.');
 });
+
+// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// DISSEMINATION MODULES (Fundamental Principles & IHL)
+// ═══════════════════════════════════════════════════════════
+
+export const getDisseminationItems = asyncHandler(async (req, res) => {
+  const { category, search, published } = req.query;
+
+  let query = supabase
+    .from('dissemination')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: false });
+
+  if (category && category !== 'all') {
+    query = query.eq('category', category);
+  }
+
+  if (published !== undefined && published !== 'all') {
+    query = query.eq('is_published', published === 'true' || published === true);
+  }
+
+  if (search && search.trim()) {
+    const term = search.trim();
+    query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%,content.ilike.%${term}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) return sendError(res, 'Failed to fetch dissemination items: ' + error.message, 500);
+
+  return sendSuccess(res, 'Dissemination modules fetched.', data || []);
+});
+
+export const getDisseminationItem = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('dissemination')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) return sendError(res, 'Dissemination topic not found.', 404);
+  return sendSuccess(res, 'Dissemination module fetched.', data);
+});
+
+export const createDisseminationItem = asyncHandler(async (req, res) => {
+  const { title, category, description, content, document_url, video_url, image_url, sort_order, is_published, tags } = req.body;
+  if (!title) return sendError(res, 'Title is required.', 400);
+
+  const newItem = {
+    title: title.trim(),
+    category: category || 'Fundamental Principles',
+    description: description ? description.trim() : '',
+    content: content ? content.trim() : '',
+    document_url: document_url || null,
+    video_url: video_url || null,
+    image_url: image_url || null,
+    sort_order: parseInt(sort_order, 10) || 0,
+    is_published: is_published !== false,
+    tags: Array.isArray(tags) ? tags : tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [],
+    created_by: req.admin?.id || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('dissemination')
+    .insert([newItem])
+    .select()
+    .single();
+
+  if (error) return sendError(res, 'Failed to create dissemination module: ' + error.message, 400);
+  return sendSuccess(res, 'Dissemination topic created successfully.', data, 201);
+});
+
+export const updateDisseminationItem = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const updates = {
+    ...req.body,
+    updated_at: new Date().toISOString(),
+  };
+  delete updates.id;
+
+  if (updates.tags && !Array.isArray(updates.tags)) {
+    updates.tags = String(updates.tags).split(',').map(t => t.trim()).filter(Boolean);
+  }
+
+  const { data, error } = await supabase
+    .from('dissemination')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error || !data) return sendError(res, 'Failed to update dissemination module: ' + (error?.message || 'Not found'), 400);
+  return sendSuccess(res, 'Dissemination topic updated successfully.', data);
+});
+
+export const deleteDisseminationItem = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { error } = await supabase
+    .from('dissemination')
+    .delete()
+    .eq('id', id);
+
+  if (error) return sendError(res, 'Failed to delete dissemination module: ' + error.message, 400);
+  return sendSuccess(res, 'Dissemination topic deleted successfully.');
+});
+
 

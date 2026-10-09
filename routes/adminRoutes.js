@@ -15,6 +15,7 @@ router.get('/activity', ctrl.getActivity);
 router.get('/members', ctrl.getMembers);
 router.get('/members/:id', ctrl.getMember);
 router.post('/members', ctrl.createMember);
+router.post('/members/:id/reset-password', ctrl.resetMemberPassword);
 router.patch('/members/:id', ctrl.updateMember);
 router.patch('/members/:id/status', ctrl.updateMemberStatus);
 router.patch('/members/:id/accept', ctrl.acceptMember);
@@ -23,6 +24,13 @@ router.patch('/members/:id/reject', ctrl.rejectMember);
 router.patch('/members/:id/activate', ctrl.activateMember);
 router.patch('/members/:id/deactivate', ctrl.deactivateMember);
 router.delete('/members/:id', ctrl.deleteMember);
+
+// ── Dissemination (Principles, IHL, Heritage) ──
+router.get('/dissemination', ctrl.getDisseminationItems);
+router.get('/dissemination/:id', ctrl.getDisseminationItem);
+router.post('/dissemination', ctrl.createDisseminationItem);
+router.patch('/dissemination/:id', ctrl.updateDisseminationItem);
+router.delete('/dissemination/:id', ctrl.deleteDisseminationItem);
 
 // ── Events ──
 router.get('/events', ctrl.getEvents);

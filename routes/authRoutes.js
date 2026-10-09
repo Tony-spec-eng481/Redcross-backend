@@ -24,7 +24,9 @@ router.post('/reset-password/:token', resetPassword);
 router.post('/logout', requireAuth, logout);
 router.get('/me', requireAuth, getMe);
 router.patch('/me', requireAuth, updateMe);
+router.put('/profile', requireAuth, updateMe);
 router.patch('/change-password', requireAuth, changePassword);
+router.post('/change-password', requireAuth, changePassword);
 router.patch('/notification-preferences', requireAuth, updateNotificationPreferences);
 
 export default router;

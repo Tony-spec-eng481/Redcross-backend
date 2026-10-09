@@ -5,6 +5,7 @@ import {
   passwordResetTemplate,
   directMessageNotificationTemplate,
   broadcastAnnouncementTemplate,
+  memberWelcomeTemplate,
 } from '../../templates/emailTemplates.js';
 
 dotenv.config();
@@ -24,7 +25,7 @@ function getBrevoConfig() {
   const senderEmail =
     process.env.Sender_Email ||
     process.env.SENDER_EMAIL ||
-    'waruijohnkar@gmail.com';
+    '';
 
   const senderName = process.env.SENDER_NAME || 'Kenya Red Cross KyU Chapter';
 
@@ -270,10 +271,42 @@ export async function sendBroadcastEmail({
   });
 }
 
+/**
+ * High-level helper: Send Welcome email to newly registered member with default password
+ */
+export async function sendMemberWelcomeEmail({
+  email,
+  name = 'Valued Member',
+  defaultPassword = 'Redcross',
+  role = 'Member',
+}) {
+  if (!email) return { success: false, error: 'Recipient email is missing' };
+
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  const loginUrl = `${clientUrl}/login`;
+  const profileUrl = `${clientUrl}/portal/profile`;
+
+  const html = memberWelcomeTemplate({
+    name,
+    email,
+    defaultPassword,
+    role,
+    loginUrl,
+    profileUrl,
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `🎉 Welcome to Kenya Red Cross KyU Chapter — Your Account & Access Guide`,
+    htmlContent: html,
+  });
+}
+
 export default {
   sendEmail,
   sendContactEmails,
   sendPasswordResetEmail,
   sendDirectMessageEmail,
   sendBroadcastEmail,
+  sendMemberWelcomeEmail,
 };

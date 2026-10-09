@@ -18,13 +18,17 @@ const formatGallery = (item) => {
 export const getPublicGallery = asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('gallery')
-    .select('id, title, image_url, category, description, type, created_at')
+    .select('id, title, image_url, category, description, type, is_favourite, created_at')
     .eq('status', 'approved')
-    .eq('is_favourite', true)
     .order('created_at', { ascending: false });
 
   if (error) return sendError(res, 'Failed to fetch gallery: ' + error.message, 500);
-  const formatted = (data || []).map(formatGallery);
+
+  const raw = data || [];
+  const favourited = raw.filter(i => i.is_favourite);
+  const result = favourited.length > 0 ? favourited : raw;
+
+  const formatted = result.map(formatGallery);
   res.json(formatted);
 });
 

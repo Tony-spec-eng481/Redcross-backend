@@ -16,6 +16,7 @@ import galleryRoutes from './routes/galleryRoutes.js';
 import firstAidRoutes from './routes/firstAidRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
+import disseminationRoutes from './routes/disseminationRoutes.js';
 import { getLeaders, getHeroSlides } from './controllers/adminController.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 
@@ -48,6 +49,9 @@ const allowedOrigins = [
 if (process.env.CLIENT_URL && process.env.CLIENT_URL.includes(',')) {
   allowedOrigins.push(...process.env.CLIENT_URL.split(',').map(s => s.trim()));
 }
+if (process.env.ADMIN_URL && process.env.ADMIN_URL.includes(',')) {
+  allowedOrigins.push(...process.env.ADMIN_URL.split(',').map(s => s.trim()));
+}
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -56,7 +60,10 @@ app.use(cors({
     if (
       allowedOrigins.includes(origin) ||
       /^http:\/\/localhost:\d+$/.test(origin) ||
-      /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)
+      /^http:\/\/127\.0\.0\.1:\d+$/.test(origin) ||
+      /\.vercel\.app$/.test(origin) ||
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.onrender.com')
     ) {
       return callback(null, true);
     }
@@ -125,6 +132,9 @@ app.use('/api/messages', messageRoutes);
 
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/profile', profileRoutes);
+
+app.use('/api/v1/dissemination', disseminationRoutes);
+app.use('/api/dissemination', disseminationRoutes);
 
 // Public endpoints for website frontend
 app.get('/api/v1/leaders', getLeaders);

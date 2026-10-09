@@ -517,7 +517,45 @@ DROP POLICY IF EXISTS "Leaders delete policy" ON public.leaders;
 CREATE POLICY "Leaders delete policy" ON public.leaders
   FOR DELETE USING (true);
 
--- ── 10. Optional Initial Seed for Leaders ──
+-- ── 10. Hero Slides Table RLS ──
+ALTER TABLE public.hero_slides ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Hero slides select policy" ON public.hero_slides;
+CREATE POLICY "Hero slides select policy" ON public.hero_slides
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Hero slides insert policy" ON public.hero_slides;
+CREATE POLICY "Hero slides insert policy" ON public.hero_slides
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Hero slides update policy" ON public.hero_slides;
+CREATE POLICY "Hero slides update policy" ON public.hero_slides
+  FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Hero slides delete policy" ON public.hero_slides;
+CREATE POLICY "Hero slides delete policy" ON public.hero_slides
+  FOR DELETE USING (true);
+
+-- ── 11. Dissemination Table RLS ──
+ALTER TABLE public.dissemination ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Dissemination select policy" ON public.dissemination;
+CREATE POLICY "Dissemination select policy" ON public.dissemination
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Dissemination insert policy" ON public.dissemination;
+CREATE POLICY "Dissemination insert policy" ON public.dissemination
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Dissemination update policy" ON public.dissemination;
+CREATE POLICY "Dissemination update policy" ON public.dissemination
+  FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Dissemination delete policy" ON public.dissemination;
+CREATE POLICY "Dissemination delete policy" ON public.dissemination
+  FOR DELETE USING (true);
+
+-- ── 12. Optional Initial Seed for Leaders ──
 INSERT INTO public.leaders (name, role, image, sort_order, status)
 VALUES
   ('Dennis Kiptanui', 'Chairperson', 'Dennis.jpeg', 1, 'active'),
@@ -530,4 +568,49 @@ VALUES
   ('Holinda Kiarie', 'Dissemination Officer', 'Holinda.jpeg', 8, 'active'),
   ('Orange', 'IT Personnel', 'Orange.jpeg', 9, 'active')
 ON CONFLICT DO NOTHING;
+
+-- ── 13. Initial Seed for Hero Slides ──
+INSERT INTO public.hero_slides (eyebrow, first, accent, description, primary_button_text, primary_href, secondary_button_text, secondary_href, image, sort_order, status)
+VALUES
+  (
+    'KIRINYAGA UNIVERSITY · RED CROSS CHAPTER',
+    'Ready to Help.',
+    'Always.',
+    'Serving humanity through compassion, courage, and community care — right here on campus.',
+    'Learn About Us',
+    '/about',
+    'Join the Chapter',
+    '/contact',
+    'https://kyuchapter.netlify.app/1.jpeg',
+    1,
+    'active'
+  ),
+  (
+    'FIRST AID · BLOOD DRIVES · OUTREACH',
+    'Compassion in',
+    'Every Action.',
+    'From first aid training to community outreach — we show up when it matters most.',
+    'See Our Events',
+    '/events',
+    'Volunteer With Us',
+    '/contact',
+    'https://kyuchapter.netlify.app/2.jpeg',
+    2,
+    'active'
+  ),
+  (
+    'HUMANITY · IMPARTIALITY · NEUTRALITY',
+    'One Chapter.',
+    'Countless Lives.',
+    'United by the seven fundamental principles of the Red Cross Movement, we serve without boundaries.',
+    'Our Mission',
+    '/about',
+    'Meet the Team',
+    '/team',
+    'https://kyuchapter.netlify.app/3.jpeg',
+    3,
+    'active'
+  )
+ON CONFLICT DO NOTHING;
+
 

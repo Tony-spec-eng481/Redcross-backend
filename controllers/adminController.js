@@ -1514,9 +1514,24 @@ export const createLeader = asyncHandler(async (req, res) => {
   const { name, role, image, bio, email, phone, sort_order, status } = req.body;
   if (!name || !role) return sendError(res, 'Leader name and role are required.', 400);
 
+  const cleanName = name.trim();
+  const cleanRole = role.trim();
+
+  // Prevent duplicate leaders with the same name and role
+  const { data: existingLeader } = await supabase
+    .from('leaders')
+    .select('id, name, role')
+    .ilike('name', cleanName)
+    .ilike('role', cleanRole)
+    .maybeSingle();
+
+  if (existingLeader) {
+    return sendError(res, `A leader profile for "${existingLeader.name}" with the role "${existingLeader.role}" already exists.`, 409);
+  }
+
   const newLeader = {
-    name: name.trim(),
-    role: role.trim(),
+    name: cleanName,
+    role: cleanRole,
     image: image || null,
     bio: bio ? bio.trim() : null,
     email: email ? email.toLowerCase().trim() : null,
@@ -1550,6 +1565,20 @@ export const updateLeader = asyncHandler(async (req, res) => {
   if (updates.email) updates.email = updates.email.toLowerCase().trim();
   if (updates.sort_order !== undefined && updates.sort_order !== '') {
     updates.sort_order = parseInt(updates.sort_order, 10);
+  }
+
+  if (updates.name && updates.role) {
+    const { data: existingLeader } = await supabase
+      .from('leaders')
+      .select('id, name, role')
+      .ilike('name', updates.name)
+      .ilike('role', updates.role)
+      .neq('id', id)
+      .maybeSingle();
+
+    if (existingLeader) {
+      return sendError(res, `Another leader profile for "${existingLeader.name}" with role "${existingLeader.role}" already exists.`, 409);
+    }
   }
 
   delete updates.id;

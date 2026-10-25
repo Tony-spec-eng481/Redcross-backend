@@ -230,7 +230,8 @@ CREATE TABLE IF NOT EXISTS public.leaders (
   status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_by UUID REFERENCES public.admins(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+  CONSTRAINT uq_leaders_name_role UNIQUE (name, role)
 );
 
 -- ── 10. Hero Slides Table (Frontend Homepage Banners) ──
@@ -287,6 +288,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON public.notifications(r
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON public.notifications(recipient_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_leaders_status ON public.leaders(status);
 CREATE INDEX IF NOT EXISTS idx_leaders_sort_order ON public.leaders(sort_order);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_leaders_name_role ON public.leaders(name, role);
 CREATE INDEX IF NOT EXISTS idx_hero_slides_status ON public.hero_slides(status);
 CREATE INDEX IF NOT EXISTS idx_hero_slides_sort_order ON public.hero_slides(sort_order);
 
@@ -599,7 +601,7 @@ VALUES
   ('Amos Maliro', 'Organising Secretary', 'Amos.jpeg', 7, 'active'),
   ('Holinda Kiarie', 'Dissemination Officer', 'Holinda.jpeg', 8, 'active'),
   ('Orange', 'IT Personnel', 'Orange.jpeg', 9, 'active')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (name, role) DO NOTHING;
 
 -- ── 13. Initial Seed for Hero Slides ──
 INSERT INTO public.hero_slides (eyebrow, first, accent, description, primary_button_text, primary_href, secondary_button_text, secondary_href, image, sort_order, status)

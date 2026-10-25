@@ -17,7 +17,7 @@ import firstAidRoutes from './routes/firstAidRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import profileRoutes from './routes/profileRoutes.js';
 import disseminationRoutes from './routes/disseminationRoutes.js';
-import { getLeaders, getHeroSlides } from './controllers/adminController.js';
+import { getLeaders, getHeroSlides, getStats, getActivity } from './controllers/adminController.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 
 dotenv.config();
@@ -136,11 +136,15 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/v1/dissemination', disseminationRoutes);
 app.use('/api/dissemination', disseminationRoutes);
 
-// Public endpoints for website frontend
+// Public endpoints for website frontend and portal dashboard
 app.get('/api/v1/leaders', getLeaders);
 app.get('/api/leaders', getLeaders);
 app.get('/api/v1/hero', getHeroSlides);
 app.get('/api/hero', getHeroSlides);
+app.get('/api/v1/stats', getStats);
+app.get('/api/stats', getStats);
+app.get('/api/v1/activity', getActivity);
+app.get('/api/activity', getActivity);
 
 
 // Upload routes (Uploads directly to Supabase storage bucket)

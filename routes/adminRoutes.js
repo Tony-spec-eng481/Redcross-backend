@@ -55,6 +55,8 @@ router.get('/firstaid', ctrl.getFirstAid);
 router.get('/firstaid/:id', ctrl.getFirstAidItem);
 router.post('/firstaid', ctrl.createFirstAid);
 router.patch('/firstaid/:id', ctrl.updateFirstAid);
+router.patch('/firstaid/:id/approve', ctrl.approveFirstAid);
+router.patch('/firstaid/:id/reject', ctrl.rejectFirstAid);
 router.delete('/firstaid/:id', ctrl.deleteFirstAid);
 
 // ── Messages ──

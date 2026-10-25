@@ -4,7 +4,105 @@ import { supabase } from '../config/supabase.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../src/utils/token.js';
 import { sendSuccess, sendError, AppError } from '../src/utils/response.js';
 import { asyncHandler } from '../src/utils/asyncHandler.js';
-import { sendPasswordResetEmail } from '../src/services/emailService.js';
+import { sendPasswordResetEmail, sendMemberWelcomeEmail } from '../src/services/emailService.js';
+
+/**
+ * POST /api/v1/auth/register
+ * Self-registration for new members — creates account, hashes password, sends welcome email
+ */
+export const register = asyncHandler(async (req, res) => {
+  const { name, email, phone, password } = req.body;
+
+  // ── Validate required fields ──
+  if (!name || !email || !password) {
+    return sendError(res, 'Name, email, and password are required.', 400);
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const trimmedName = name.trim();
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(normalizedEmail)) {
+    return sendError(res, 'Please enter a valid email address.', 400);
+  }
+
+  // Validate password strength
+  if (password.length < 8) {
+    return sendError(res, 'Password must be at least 8 characters long.', 400);
+  }
+
+  // ── Check for existing member or admin with same email ──
+  const { data: existingMember } = await supabase
+    .from('members')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .single();
+
+  if (existingMember) {
+    return sendError(res, 'An account with this email already exists. Please login instead.', 409);
+  }
+
+  const { data: existingAdmin } = await supabase
+    .from('admins')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .single();
+
+  if (existingAdmin) {
+    return sendError(res, 'An account with this email already exists. Please login instead.', 409);
+  }
+
+  // ── Hash password ──
+  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
+  const passwordHash = await bcrypt.hash(password, saltRounds);
+
+  // ── Insert new member ──
+  const { data: newMember, error: insertError } = await supabase
+    .from('members')
+    .insert({
+      name: trimmedName,
+      email: normalizedEmail,
+      phone: phone ? phone.trim() : null,
+      password_hash: passwordHash,
+      role: 'Member',
+      status: 'active',
+      is_active: true,
+      joined: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .select('id, name, email, phone, role, status, joined, created_at')
+    .single();
+
+  if (insertError) {
+    console.error('❌ Member registration insert error:', insertError);
+    if (insertError.code === '23505') {
+      return sendError(res, 'An account with this email already exists.', 409);
+    }
+    return sendError(res, 'Registration failed. Please try again later.', 500);
+  }
+
+  console.log(`✅ New member registered: ${trimmedName} (${normalizedEmail})`);
+
+  // ── Send welcome email (non-blocking) ──
+  sendMemberWelcomeEmail({
+    email: normalizedEmail,
+    name: trimmedName,
+    defaultPassword: password,
+    role: 'Member',
+  }).catch((emailErr) => {
+    console.error('⚠️ Failed to send welcome email:', emailErr.message);
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: 'Registration successful! Welcome to Kenya Red Cross KyU Chapter. Please login with your credentials.',
+    data: {
+      member: newMember,
+    },
+  });
+});
 
 /**
  * POST /api/v1/auth/login

@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  register,
   login,
   logout,
   refresh,
@@ -15,6 +16,7 @@ import { requireAuth } from '../middlewares/authMiddleware.js';
 const router = express.Router();
 
 // Public auth routes
+router.post('/register', register);
 router.post('/login', login);
 router.post('/refresh', refresh);
 router.post('/forgot-password', forgotPassword);

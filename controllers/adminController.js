@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { supabase } from '../config/supabase.js';
 import { sendSuccess, sendError } from '../src/utils/response.js';
 import { asyncHandler } from '../src/utils/asyncHandler.js';
-import { sendDirectMessageEmail, sendBroadcastEmail, sendMemberWelcomeEmail } from '../src/services/emailService.js';
+import { sendDirectMessageEmail, sendBroadcastEmail, sendMemberWelcomeEmail, sendFirstAidAnnouncementEmail, sendDisseminationAnnouncementEmail } from '../src/services/emailService.js';
 
 // Helper to format gallery item with both url and image_url
 const formatGallery = (item) => {
@@ -19,44 +19,101 @@ const formatGallery = (item) => {
 // ═══════════════════════════════════════════════════════════
 
 export const getStats = asyncHandler(async (req, res) => {
-  const [members, admins, events, pendingGallery, messages, pendingEvents, questions] = await Promise.all([
+  const [
+    members,
+    admins,
+    events,
+    pendingEvents,
+    pendingGallery,
+    approvedGallery,
+    allGallery,
+    messages,
+    questions,
+    firstAid,
+    heroSlides,
+    dissemination,
+  ] = await Promise.all([
     supabase.from('members').select('*', { count: 'exact', head: true }),
     supabase.from('admins').select('*', { count: 'exact', head: true }),
     supabase.from('events').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
-    supabase.from('gallery').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabase.from('messages').select('*', { count: 'exact', head: true }),
     supabase.from('events').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('gallery').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('gallery').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+    supabase.from('gallery').select('*', { count: 'exact', head: true }),
+    supabase.from('messages').select('*', { count: 'exact', head: true }),
     supabase.from('questions').select('*', { count: 'exact', head: true }).eq('status', 'unanswered'),
+    supabase.from('first_aid').select('*', { count: 'exact', head: true }),
+    supabase.from('hero_slides').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+    supabase.from('dissemination').select('*', { count: 'exact', head: true }),
   ]);
 
+  const totalMembers = (members.count || 0) + (admins.count || 0);
+  const activeEvents = events.count || 0;
+  const pendingEventsCount = pendingEvents.count || 0;
+  const totalGalleryCount = allGallery.count || (approvedGallery.count || 0) + (pendingGallery.count || 0);
+  const approvedGalleryCount = approvedGallery.count || 0;
+  const pendingImagesCount = pendingGallery.count || 0;
+  const totalMessages = messages.count || 0;
+  const unansweredQuestions = questions.count || 0;
+  const firstAidGuides = firstAid.count || 0;
+  const activeHeroSlides = heroSlides.count || 0;
+  const disseminationCount = dissemination.count || 0;
+
   return sendSuccess(res, 'Dashboard stats fetched.', {
-    totalMembers: (members.count || 0) + (admins.count || 0),
-    activeEvents: events.count || 0,
-    pendingImages: pendingGallery.count || 0,
-    totalMessages: messages.count || 0,
-    pendingEvents: pendingEvents.count || 0,
-    unansweredQuestions: questions.count || 0,
+    totalMembers,
+    activeEvents,
+    pendingEvents: pendingEventsCount,
+    totalGallery: totalGalleryCount,
+    approvedGallery: approvedGalleryCount,
+    pendingImages: pendingImagesCount,
+    totalMessages,
+    unansweredQuestions,
+    firstAidGuides,
+    activeHeroSlides,
+    disseminationModules: disseminationCount,
   });
 });
 
 export const getActivity = asyncHandler(async (req, res) => {
-  const [{ data: recentEvents }, { data: recentMembers }] = await Promise.all([
-    supabase.from('events').select('title, status, created_at').order('created_at', { ascending: false }).limit(5),
-    supabase.from('members').select('name, role, joined, created_at').order('created_at', { ascending: false }).limit(5),
+  const [
+    { data: recentEvents },
+    { data: recentMembers },
+    { data: recentGallery },
+    { data: recentMessages },
+  ] = await Promise.all([
+    supabase.from('events').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(6),
+    supabase.from('members').select('id, name, role, joined, created_at').order('created_at', { ascending: false }).limit(6),
+    supabase.from('gallery').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(5),
+    supabase.from('messages').select('id, subject, text, sender_name, created_at').order('created_at', { ascending: false }).limit(4),
   ]);
 
   const activity = [
     ...(recentEvents || []).map((e) => ({
+      id: `ev-${e.id || e.created_at}`,
       type: 'event',
-      text: `Event "${e.title}" ${e.status}`,
+      text: `Event "${e.title}" ${e.status === 'approved' ? 'scheduled & active' : e.status}`,
       time: e.created_at,
     })),
     ...(recentMembers || []).map((m) => ({
+      id: `mem-${m.id || m.created_at}`,
       type: 'member',
       text: `${m.name} joined as ${m.role || 'Member'}`,
       time: m.joined || m.created_at,
     })),
+    ...(recentGallery || []).map((g) => ({
+      id: `gal-${g.id || g.created_at}`,
+      type: 'gallery',
+      text: `Photo "${g.title || 'Chapter Activity'}" shared to gallery`,
+      time: g.created_at,
+    })),
+    ...(recentMessages || []).map((msg) => ({
+      id: `msg-${msg.id || msg.created_at}`,
+      type: 'message',
+      text: `Communication dispatched: "${msg.subject || 'Direct message'}"`,
+      time: msg.created_at,
+    })),
   ]
+    .filter((a) => a.time)
     .sort((a, b) => new Date(b.time) - new Date(a.time))
     .slice(0, 10);
 
@@ -905,11 +962,27 @@ export const deleteGalleryItem = asyncHandler(async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 
 export const getFirstAid = asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  const { status, category, search } = req.query;
+
+  let query = supabase
     .from('first_aid')
     .select('*')
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: false });
+
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+
+  if (category && category !== 'all') {
+    query = query.eq('category', category);
+  }
+
+  if (search) {
+    query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%,category.ilike.%${search}%`);
+  }
+
+  const { data, error } = await query;
 
   if (error) return sendError(res, 'Failed to fetch first aid guides: ' + error.message, 500);
   return sendSuccess(res, 'First aid guides fetched.', data || []);
@@ -927,17 +1000,23 @@ export const getFirstAidItem = asyncHandler(async (req, res) => {
 });
 
 export const createFirstAid = asyncHandler(async (req, res) => {
-  const { title, content, category, video_url, image_url } = req.body;
+  const { title, content, category, video_url, image_url, media_type, status = 'approved', broadcast_email = true } = req.body;
   if (!title) return sendError(res, 'Title is required.', 400);
+
+  const determinedMediaType = media_type || (video_url ? 'video' : 'image');
 
   const item = {
     title: title.trim(),
     content: content || '',
-    category: category || 'General',
-    video_url: video_url || '',
-    image_url: image_url || '',
-    is_published: true,
+    category: category || 'Emergency Care',
+    video_url: video_url || null,
+    image_url: image_url || null,
+    media_type: determinedMediaType,
+    status: status || 'approved',
+    is_published: status === 'approved',
     created_by: req.admin?.id || null,
+    approved_by: status === 'approved' ? (req.admin?.id || null) : null,
+    approved_at: status === 'approved' ? new Date().toISOString() : null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -949,7 +1028,17 @@ export const createFirstAid = asyncHandler(async (req, res) => {
     .single();
 
   if (error) return sendError(res, 'Failed to create guide: ' + error.message, 400);
-  return sendSuccess(res, 'First aid guide created.', data, 201);
+
+  let emailResult = null;
+  if (data.status === 'approved' && broadcast_email) {
+    try {
+      emailResult = await sendFirstAidAnnouncementEmail({ firstAid: data });
+    } catch (emailErr) {
+      console.error('Failed to broadcast first aid email on creation:', emailErr);
+    }
+  }
+
+  return sendSuccess(res, 'First aid guide created.' + (emailResult?.success ? ' Announcement sent to members.' : ''), { guide: data, emailResult }, 201);
 });
 
 export const updateFirstAid = asyncHandler(async (req, res) => {
@@ -959,6 +1048,10 @@ export const updateFirstAid = asyncHandler(async (req, res) => {
   };
   delete updates.id;
 
+  if (updates.video_url && !updates.media_type) {
+    updates.media_type = 'video';
+  }
+
   const { data, error } = await supabase
     .from('first_aid')
     .update(updates)
@@ -967,7 +1060,91 @@ export const updateFirstAid = asyncHandler(async (req, res) => {
     .single();
 
   if (error || !data) return sendError(res, 'Failed to update guide or guide not found.', 404);
+
+  // If broadcast_email was explicitly requested during update
+  if (req.body.broadcast_email && data.status === 'approved') {
+    try {
+      await sendFirstAidAnnouncementEmail({ firstAid: data });
+    } catch (err) {
+      console.error('Failed to send first aid update broadcast:', err);
+    }
+  }
+
   return sendSuccess(res, 'Guide updated.', data);
+});
+
+export const approveFirstAid = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('first_aid')
+    .update({
+      status: 'approved',
+      is_published: true,
+      approved_by: req.admin?.id || null,
+      approved_at: new Date().toISOString(),
+      rejection_reason: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    return sendError(res, 'Guide not found or approval failed: ' + (error?.message || ''), 404);
+  }
+
+  // Broadcast announcement email to all active members
+  let emailResult = null;
+  try {
+    emailResult = await sendFirstAidAnnouncementEmail({ firstAid: data });
+  } catch (emailErr) {
+    console.error('Failed to broadcast approved first aid email:', emailErr);
+  }
+
+  // Create an in-app notification for the member who submitted it if email exists
+  if (data.submitted_by_email) {
+    try {
+      await supabase.from('notifications').insert([{
+        type: 'system',
+        text: `Your First Aid Guide "${data.title}" has been reviewed and approved!`,
+        link: '/portal/firstaid',
+        meta: { guideId: data.id, title: data.title },
+        created_at: new Date().toISOString(),
+      }]);
+    } catch (e) {
+      // Non-fatal
+    }
+  }
+
+  return sendSuccess(
+    res,
+    `First aid guide approved successfully! ${emailResult?.success ? `Announcement sent to ${emailResult.totalRecipients || 0} members.` : 'Email notification processed.'}`,
+    { guide: data, emailResult }
+  );
+});
+
+export const rejectFirstAid = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { reason = 'Guide did not meet Red Cross clinical or verification standards.' } = req.body;
+
+  const { data, error } = await supabase
+    .from('first_aid')
+    .update({
+      status: 'rejected',
+      is_published: false,
+      rejection_reason: reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error || !data) {
+    return sendError(res, 'Guide not found or rejection failed: ' + (error?.message || ''), 404);
+  }
+
+  return sendSuccess(res, 'First aid guide marked as rejected.', data);
 });
 
 export const deleteFirstAid = asyncHandler(async (req, res) => {
@@ -1114,26 +1291,34 @@ export const getQuestions = asyncHandler(async (req, res) => {
 });
 
 export const getQuestion = asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
-    .from('questions')
-    .select('*')
-    .eq('id', req.params.id)
-    .single();
+  const [qRes, aRes] = await Promise.all([
+    supabase.from('questions').select('*').eq('id', req.params.id).single(),
+    supabase.from('question_answers').select('*').eq('question_id', req.params.id).order('is_accepted', { ascending: false }).order('votes', { ascending: false }).order('created_at', { ascending: true })
+  ]);
 
-  if (error || !data) return sendError(res, 'Question not found.', 404);
-  return sendSuccess(res, 'Question fetched.', data);
+  if (qRes.error || !qRes.data) return sendError(res, 'Question not found.', 404);
+  return sendSuccess(res, 'Question fetched.', {
+    ...qRes.data,
+    answers: aRes.data || [],
+  });
 });
 
 export const createQuestion = asyncHandler(async (req, res) => {
-  const { question, asked_by } = req.body;
+  const { title, question, asked_by, category } = req.body;
   if (!question) return sendError(res, 'Question text is required.', 400);
 
+  const displayTitle = title || (question.length > 60 ? `${question.slice(0, 60)}...` : question);
+
   const q = {
+    title: displayTitle,
     question: question.trim(),
-    asked_by: asked_by || 'Member',
+    category: category || 'First Aid & Emergencies',
+    asked_by: asked_by || req.admin?.name || 'Administrator',
+    asked_by_role: 'Admin',
     status: 'unanswered',
-    answer: null,
     is_public: true,
+    votes: 0,
+    answers_count: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -1149,14 +1334,40 @@ export const createQuestion = asyncHandler(async (req, res) => {
 });
 
 export const answerQuestion = asyncHandler(async (req, res) => {
-  const { answer } = req.body;
+  const { answer, answer_text } = req.body;
+  const ansText = answer_text || answer;
+  if (!ansText || !ansText.trim()) return sendError(res, 'Answer text is required.', 400);
+
+  const adminName = req.admin?.name || 'Chapter Medical Officer';
+
+  // 1. Insert into question_answers
+  const { data: newAns } = await supabase
+    .from('question_answers')
+    .insert([{
+      question_id: req.params.id,
+      author_name: adminName,
+      author_role: 'Chapter Medical Officer / Admin',
+      answer_text: ansText.trim(),
+      votes: 1,
+      is_accepted: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }])
+    .select()
+    .single();
+
+  // 2. Update question status and answers_count
+  const { data: currentQ } = await supabase.from('questions').select('answers_count').eq('id', req.params.id).single();
+  const newCount = (currentQ?.answers_count || 0) + 1;
+
   const { data, error } = await supabase
     .from('questions')
     .update({
-      answer: answer || '',
+      answer: ansText.trim(),
       status: 'answered',
       answered_by: req.admin?.id || null,
       answered_at: new Date().toISOString(),
+      answers_count: newCount,
       updated_at: new Date().toISOString(),
     })
     .eq('id', req.params.id)
@@ -1164,7 +1375,7 @@ export const answerQuestion = asyncHandler(async (req, res) => {
     .single();
 
   if (error || !data) return sendError(res, 'Question not found or update failed.', 404);
-  return sendSuccess(res, 'Question answered.', data);
+  return sendSuccess(res, 'Question answered and published for all members.', { question: data, answer: newAns });
 });
 
 export const deleteQuestion = asyncHandler(async (req, res) => {
@@ -1640,12 +1851,16 @@ export const getDisseminationItems = asyncHandler(async (req, res) => {
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: false });
 
-  if (category && category !== 'all') {
-    query = query.eq('category', category);
+  if (category && category !== 'all' && category !== 'All') {
+    // If category has parentheses or partial, match flexible ilike
+    query = query.ilike('category', `%${category.split(' ')[0]}%`);
   }
 
+  // If public or member portal viewer, default to published only
   if (published !== undefined && published !== 'all') {
     query = query.eq('is_published', published === 'true' || published === true);
+  } else if (!req.admin) {
+    query = query.eq('is_published', true);
   }
 
   if (search && search.trim()) {
@@ -1656,7 +1871,14 @@ export const getDisseminationItems = asyncHandler(async (req, res) => {
   const { data, error } = await query;
   if (error) return sendError(res, 'Failed to fetch dissemination items: ' + error.message, 500);
 
-  return sendSuccess(res, 'Dissemination modules fetched.', data || []);
+  // Normalize document_url and pdf_url
+  const formatted = (data || []).map((item) => ({
+    ...item,
+    document_url: item.document_url || item.pdf_url || null,
+    pdf_url: item.document_url || item.pdf_url || null,
+  }));
+
+  return sendSuccess(res, 'Dissemination modules fetched.', formatted);
 });
 
 export const getDisseminationItem = asyncHandler(async (req, res) => {
@@ -1669,19 +1891,42 @@ export const getDisseminationItem = asyncHandler(async (req, res) => {
     .single();
 
   if (error || !data) return sendError(res, 'Dissemination topic not found.', 404);
-  return sendSuccess(res, 'Dissemination module fetched.', data);
+
+  const formatted = {
+    ...data,
+    document_url: data.document_url || data.pdf_url || null,
+    pdf_url: data.document_url || data.pdf_url || null,
+  };
+
+  return sendSuccess(res, 'Dissemination module fetched.', formatted);
 });
 
 export const createDisseminationItem = asyncHandler(async (req, res) => {
-  const { title, category, description, content, document_url, video_url, image_url, sort_order, is_published, tags } = req.body;
+  const {
+    title,
+    category,
+    description,
+    content,
+    document_url,
+    pdf_url,
+    video_url,
+    image_url,
+    sort_order,
+    is_published,
+    tags,
+    notify_members = true,
+  } = req.body;
+
   if (!title) return sendError(res, 'Title is required.', 400);
+
+  const finalDocUrl = document_url || pdf_url || null;
 
   const newItem = {
     title: title.trim(),
     category: category || 'Fundamental Principles',
     description: description ? description.trim() : '',
     content: content ? content.trim() : '',
-    document_url: document_url || null,
+    document_url: finalDocUrl,
     video_url: video_url || null,
     image_url: image_url || null,
     sort_order: parseInt(sort_order, 10) || 0,
@@ -1699,7 +1944,58 @@ export const createDisseminationItem = asyncHandler(async (req, res) => {
     .single();
 
   if (error) return sendError(res, 'Failed to create dissemination module: ' + error.message, 400);
-  return sendSuccess(res, 'Dissemination topic created successfully.', data, 201);
+
+  const formatted = {
+    ...data,
+    document_url: data.document_url || data.pdf_url || finalDocUrl,
+    pdf_url: data.document_url || data.pdf_url || finalDocUrl,
+  };
+
+  let emailResult = null;
+
+  // If published and notify_members is not false: dispatch website notification & email to all members
+  if (formatted.is_published && notify_members !== false && notify_members !== 'false') {
+    // 1. In-app Broadcast message for Website members
+    try {
+      await supabase.from('messages').insert([{
+        sender_name: req.admin?.name || 'Dissemination Office',
+        sender_email: req.admin?.email || 'dissemination@kyuredcross.org',
+        subject: `🌐 New Dissemination Topic: ${formatted.title}`,
+        text: `New Red Cross dissemination module added: "${formatted.title}" (${formatted.category}). Read about our fundamental principles and humanitarian guidelines now in the portal.`,
+        is_broadcast: true,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      }]);
+    } catch (msgErr) {
+      console.warn('⚠️ Could not insert broadcast message for dissemination:', msgErr.message);
+    }
+
+    // 2. In-app system notification for Admin / Portal notification bell
+    try {
+      await supabase.from('notifications').insert([{
+        type: 'system',
+        text: `New Dissemination Module added: "${formatted.title}" (${formatted.category})`,
+        link: '/portal/dissemination',
+        meta: { disseminationId: formatted.id, title: formatted.title, category: formatted.category },
+        created_at: new Date().toISOString(),
+      }]);
+    } catch (notifErr) {
+      console.warn('⚠️ Could not insert system notification for dissemination:', notifErr.message);
+    }
+
+    // 3. Email notification dispatched to all members and admins
+    try {
+      emailResult = await sendDisseminationAnnouncementEmail({ dissemination: formatted });
+    } catch (emailErr) {
+      console.error('⚠️ Failed to dispatch dissemination announcement emails:', emailErr);
+    }
+  }
+
+  const successMessage = `Dissemination topic created successfully!${
+    emailResult?.success ? ` Notification email sent to ${emailResult.totalRecipients || 0} members.` : ''
+  }`;
+
+  return sendSuccess(res, successMessage, { ...formatted, emailResult }, 201);
 });
 
 export const updateDisseminationItem = asyncHandler(async (req, res) => {
@@ -1709,6 +2005,13 @@ export const updateDisseminationItem = asyncHandler(async (req, res) => {
     updated_at: new Date().toISOString(),
   };
   delete updates.id;
+
+  const notifyMembers = updates.notify_members;
+  delete updates.notify_members;
+
+  if (updates.pdf_url && !updates.document_url) {
+    updates.document_url = updates.pdf_url;
+  }
 
   if (updates.tags && !Array.isArray(updates.tags)) {
     updates.tags = String(updates.tags).split(',').map(t => t.trim()).filter(Boolean);
@@ -1722,7 +2025,38 @@ export const updateDisseminationItem = asyncHandler(async (req, res) => {
     .single();
 
   if (error || !data) return sendError(res, 'Failed to update dissemination module: ' + (error?.message || 'Not found'), 400);
-  return sendSuccess(res, 'Dissemination topic updated successfully.', data);
+
+  const formatted = {
+    ...data,
+    document_url: data.document_url || data.pdf_url || null,
+    pdf_url: data.document_url || data.pdf_url || null,
+  };
+
+  let emailResult = null;
+  // If explicitly requested to notify members upon update/publishing
+  if (notifyMembers === true || notifyMembers === 'true') {
+    try {
+      await supabase.from('messages').insert([{
+        sender_name: req.admin?.name || 'Dissemination Office',
+        sender_email: req.admin?.email || 'dissemination@kyuredcross.org',
+        subject: `🌐 Updated Dissemination: ${formatted.title}`,
+        text: `Red Cross dissemination module updated: "${formatted.title}" (${formatted.category}). Check out the latest updates in the portal.`,
+        is_broadcast: true,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      }]);
+    } catch (msgErr) {
+      console.warn('⚠️ Could not insert broadcast message for dissemination update:', msgErr.message);
+    }
+
+    try {
+      emailResult = await sendDisseminationAnnouncementEmail({ dissemination: formatted });
+    } catch (emailErr) {
+      console.error('⚠️ Failed to dispatch dissemination announcement email on update:', emailErr);
+    }
+  }
+
+  return sendSuccess(res, 'Dissemination topic updated successfully.', { ...formatted, emailResult });
 });
 
 export const deleteDisseminationItem = asyncHandler(async (req, res) => {

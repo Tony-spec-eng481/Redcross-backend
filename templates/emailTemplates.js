@@ -636,3 +636,314 @@ export function memberWelcomeTemplate({
   });
 }
 
+/**
+ * 7. First Aid Guide Approval & Announcement Template
+ * Sent to all chapter members when a new first aid guide is approved by the admin.
+ */
+export function firstAidAnnouncementTemplate({
+  title,
+  category = 'Emergency Care',
+  content: guideContent = '',
+  imageUrl = '',
+  videoUrl = '',
+  mediaType = 'image',
+  submittedByName = '',
+  portalUrl = 'http://localhost:5173/portal/firstaid',
+}) {
+  const contentExcerpt = guideContent
+    ? guideContent.length > 320
+      ? `${guideContent.slice(0, 320)}...`
+      : guideContent
+    : 'A new emergency first aid protocol has been verified and published to the portal.';
+
+  const formattedExcerpt = contentExcerpt
+    .split('\n')
+    .filter(line => line.trim())
+    .map(line => `<p style="margin: 0 0 8px 0; color: #374151; font-size: 14px; line-height: 1.6;">${line}</p>`)
+    .join('');
+
+  const mediaSection = (() => {
+    if (imageUrl) {
+      return `
+        <div style="margin: 20px 0; text-align: center;">
+          <a href="${portalUrl}" style="text-decoration: none; display: block;">
+            <img src="${imageUrl}" alt="${title}" style="max-width: 100%; height: auto; max-height: 280px; object-fit: cover; border-radius: 8px; border: 1px solid #E5E7EB; box-shadow: 0 2px 8px rgba(0,0,0,0.06);" />
+          </a>
+        </div>
+      `;
+    }
+    if (videoUrl) {
+      return `
+        <div style="margin: 20px 0; background: linear-gradient(135deg, #1F2937 0%, #111827 100%); border-radius: 8px; padding: 24px 16px; text-align: center; color: #ffffff;">
+          <div style="display: inline-block; width: 52px; height: 52px; line-height: 52px; border-radius: 50%; background-color: ${RED_CROSS_RED}; color: #ffffff; font-size: 24px; margin-bottom: 8px;">▶</div>
+          <div style="font-size: 14px; font-weight: 600; color: #F3F4F6;">Video Demonstration Available</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">Watch the full high-definition first aid technique in your member portal</div>
+        </div>
+      `;
+    }
+    return '';
+  })();
+
+  const submitterBadge = submittedByName
+    ? `
+      <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 10px 14px; margin: 16px 0; font-size: 13px; color: #166534; display: flex; align-items: center;">
+        <span>✅ <strong>Contributed by:</strong> ${submittedByName} &bull; <em>Reviewed & Approved by Medical Committee</em></span>
+      </div>
+    `
+    : `
+      <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 10px 14px; margin: 16px 0; font-size: 13px; color: ${RED_CROSS_DARK};">
+        <span>🛡️ <strong>Official Protocol:</strong> Issued by Kenya Red Cross Medical & Training Department</span>
+      </div>
+    `;
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 16px;">
+      <span style="display: inline-block; background-color: #FEE2E2; color: ${RED_CROSS_RED}; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 4px 12px; border-radius: 12px; border: 1px solid #FECACA;">
+        🚑 First Aid & Emergency Guide
+      </span>
+    </div>
+
+    <h2 style="margin-top: 0; margin-bottom: 8px; color: #111827; font-size: 22px; font-weight: 800; line-height: 1.3; text-align: center;">
+      ${title}
+    </h2>
+
+    <div style="text-align: center; margin-bottom: 16px;">
+      <span style="display: inline-block; background-color: #E5E7EB; color: #374151; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 6px;">
+        Category: ${category}
+      </span>
+    </div>
+
+    ${mediaSection}
+
+    ${submitterBadge}
+
+    <div style="background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 18px 20px; margin: 20px 0;">
+      <h3 style="margin-top: 0; color: #1F2937; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #E5E7EB; padding-bottom: 8px; margin-bottom: 12px;">
+        📖 Overview & Key Steps Preview
+      </h3>
+      ${formattedExcerpt}
+    </div>
+
+    <!-- CTA Button -->
+    <div class="btn-container" style="text-align: center; margin: 28px 0 20px 0;">
+      <a href="${portalUrl}" class="btn" style="background: linear-gradient(135deg, ${RED_CROSS_RED} 0%, ${RED_CROSS_DARK} 100%); color: #ffffff; padding: 14px 28px; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 8px; display: inline-block; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);">
+        🏥 View Full First Aid Guide on Portal &rarr;
+      </a>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 12px; color: #6B7280;">
+        Access step-by-step illustrations, video guides, and emergency checklists directly on your portal.
+      </span>
+    </div>
+
+    <div class="alert-box" style="background-color: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; border-radius: 4px; font-size: 12.5px; color: #92400E; margin-top: 24px;">
+      ⚠️ <strong>Emergency Notice:</strong> This guide provides essential first aid steps for trained volunteers and responders. In case of critical life-threatening situations, always alert professional emergency medical services immediately (Dial <strong>999</strong> or Kenya Red Cross Hotline <strong>1199</strong>).
+    </div>
+
+    <p style="color: #4B5563; font-size: 13.5px; margin-top: 24px; line-height: 1.6;">
+      Stay prepared. Save lives.<br/><br/>
+      Best regards,<br/>
+      <strong>First Aid & Emergency Response Team</strong><br/>
+      Kenya Red Cross Society — Kirinyaga University Chapter
+    </p>
+  `;
+
+  return emailLayout({
+    title: `[First Aid Alert] ${title}`,
+    preheader: `New first aid resource: "${title}" (${category}). Learn the steps to save a life today.`,
+    content,
+  });
+}
+
+/**
+ * 8. First Aid Community Question Notification Template
+ * Sent to all members and admins when a user posts a question in the Q&A section.
+ */
+export function firstAidQuestionNotificationTemplate({
+  title = '',
+  questionText = '',
+  askedByName = 'A Chapter Member',
+  category = 'First Aid & Emergency Care',
+  qnaUrl = 'http://localhost:5173/portal/firstaid?tab=ask',
+}) {
+  const displayTitle = title || (questionText.length > 70 ? `${questionText.slice(0, 70)}...` : questionText);
+
+  const formattedQuestion = questionText
+    .split('\n')
+    .filter(line => line.trim())
+    .map(line => `<p style="margin: 0 0 8px 0; color: #374151; font-size: 14.5px; line-height: 1.6;">${line}</p>`)
+    .join('');
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 16px;">
+      <span style="display: inline-block; background-color: #FEF3C7; color: #D97706; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 4px 12px; border-radius: 12px; border: 1px solid #FDE68A;">
+        ❓ Community Question & Discussion
+      </span>
+    </div>
+
+    <h2 style="margin-top: 0; margin-bottom: 10px; color: #111827; font-size: 21px; font-weight: 800; line-height: 1.35; text-align: center;">
+      ${displayTitle}
+    </h2>
+
+    <div style="text-align: center; margin-bottom: 18px;">
+      <span style="display: inline-block; background-color: #F3F4F6; color: #4B5563; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 6px;">
+        Category: ${category}
+      </span>
+    </div>
+
+    <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+      <div style="display: flex; align-items: center; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #E2E8F0; font-size: 13px; color: #64748b;">
+        <span>👤 <strong>Asked by:</strong> ${askedByName}</span>
+      </div>
+      <div style="color: #1F2937;">
+        ${formattedQuestion}
+      </div>
+    </div>
+
+    <div style="background-color: #EFF6FF; border-left: 4px solid #3B82F6; padding: 12px 16px; border-radius: 4px; font-size: 13px; color: #1E40AF; margin: 20px 0;">
+      💡 <strong>Can you answer this question?</strong> Your medical experience and knowledge help keep our volunteers and community safe. Join the discussion!
+    </div>
+
+    <!-- CTA Button -->
+    <div class="btn-container" style="text-align: center; margin: 28px 0 20px 0;">
+      <a href="${qnaUrl}" class="btn" style="background: linear-gradient(135deg, ${RED_CROSS_RED} 0%, ${RED_CROSS_DARK} 100%); color: #ffffff; padding: 14px 28px; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 8px; display: inline-block; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);">
+        💬 View Discussion & Post an Answer &rarr;
+      </a>
+    </div>
+
+    <p style="color: #64748B; font-size: 13px; margin-top: 24px; text-align: center;">
+      Kenya Red Cross Society &mdash; Kirinyaga University Chapter Emergency Knowledge Hub
+    </p>
+  `;
+
+  return emailLayout({
+    title: `[Q&A Alert] ${displayTitle}`,
+    preheader: `${askedByName} asked: "${displayTitle}". Read and answer on the member portal.`,
+    content,
+  });
+}
+
+/**
+ * 9. Dissemination & IHL Knowledge Announcement Template
+ * Sent to all active members when a new Dissemination module is published by an admin.
+ */
+export function disseminationAnnouncementTemplate({
+  title = '',
+  category = 'Fundamental Principles',
+  description = '',
+  contentExcerpt = '',
+  imageUrl = '',
+  videoUrl = '',
+  documentUrl = '',
+  tags = [],
+  portalUrl = 'http://localhost:5173/portal/dissemination',
+}) {
+  const mediaSection = imageUrl
+    ? `
+      <div style="text-align: center; margin: 20px 0;">
+        <img src="${imageUrl}" alt="${title}" style="max-width: 100%; max-height: 280px; object-fit: cover; border-radius: 8px; border: 1px solid #E5E7EB; box-shadow: 0 2px 8px rgba(0,0,0,0.06);" />
+      </div>
+    `
+    : '';
+
+  const cleanDescription = description
+    ? `<div style="background-color: #FEF2F2; border-left: 4px solid ${RED_CROSS_RED}; padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 18px 0; font-size: 14.5px; color: ${RED_CROSS_DARK}; font-weight: 500; line-height: 1.5;">${description.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
+    : '';
+
+  const formattedExcerpt = contentExcerpt
+    ? `<div style="color: #374151; font-size: 14px; line-height: 1.7; white-space: pre-line; margin-bottom: 16px;">${contentExcerpt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
+    : '';
+
+  const tagsBadge = Array.isArray(tags) && tags.length > 0
+    ? `<div style="margin: 12px 0; text-align: center;">${tags.map(t => `<span style="display: inline-block; background-color: #F3F4F6; color: #4B5563; font-size: 11.5px; padding: 2px 8px; border-radius: 4px; margin: 2px 4px;">#${t}</span>`).join('')}</div>`
+    : '';
+
+  const extraResources = [];
+  if (documentUrl) {
+    extraResources.push(`📄 <strong>Official Document / PDF Reference Guide</strong> included`);
+  }
+  if (videoUrl) {
+    extraResources.push(`🎥 <strong>Video Resource / Lecture Presentation</strong> included`);
+  }
+
+  const resourcesHtml = extraResources.length > 0
+    ? `
+      <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #166534;">
+        ${extraResources.map(r => `<div style="margin: 4px 0;">${r}</div>`).join('')}
+      </div>
+    `
+    : '';
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 16px;">
+      <span style="display: inline-block; background-color: #FEE2E2; color: ${RED_CROSS_RED}; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 4px 14px; border-radius: 12px; border: 1px solid #FECACA;">
+        🌐 Dissemination & IHL Knowledge Update
+      </span>
+    </div>
+
+    <h2 style="margin-top: 0; margin-bottom: 8px; color: #111827; font-size: 22px; font-weight: 800; line-height: 1.3; text-align: center;">
+      ${title}
+    </h2>
+
+    <div style="text-align: center; margin-bottom: 16px;">
+      <span style="display: inline-block; background-color: #E5E7EB; color: #374151; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 6px;">
+        Curriculum: ${category}
+      </span>
+    </div>
+
+    ${mediaSection}
+
+    ${cleanDescription}
+
+    ${formattedExcerpt ? `
+      <div style="background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 18px 20px; margin: 18px 0;">
+        <h3 style="margin-top: 0; color: #1F2937; font-size: 13.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #E5E7EB; padding-bottom: 8px; margin-bottom: 12px;">
+          📖 Module Summary & Takeaways
+        </h3>
+        ${formattedExcerpt}
+      </div>
+    ` : ''}
+
+    ${resourcesHtml}
+
+    ${tagsBadge}
+
+    <!-- CTA Button -->
+    <div class="btn-container" style="text-align: center; margin: 28px 0 20px 0;">
+      <a href="${portalUrl}" class="btn" style="background: linear-gradient(135deg, ${RED_CROSS_RED} 0%, ${RED_CROSS_DARK} 100%); color: #ffffff; padding: 14px 28px; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 8px; display: inline-block; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);">
+        🌐 Read Full Dissemination Module on Portal &rarr;
+      </a>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 12px; color: #6B7280;">
+        Deepen your knowledge of the Geneva Conventions, emblem rules, and our seven core principles.
+      </span>
+    </div>
+
+    <div style="border-top: 1px solid #E5E7EB; padding-top: 18px; margin-top: 24px; text-align: center;">
+      <p style="font-size: 11.5px; color: #6B7280; font-weight: 600; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.6px;">
+        The 7 Fundamental Principles of the International Red Cross Movement
+      </p>
+      <p style="font-size: 11px; color: #9CA3AF; margin: 0; line-height: 1.5;">
+        Humanity &bull; Impartiality &bull; Neutrality &bull; Independence &bull; Voluntary Service &bull; Unity &bull; Universality
+      </p>
+    </div>
+
+    <p style="color: #4B5563; font-size: 13.5px; margin-top: 24px; line-height: 1.6;">
+      Warm humanitarian regards,<br/><br/>
+      <strong>Dissemination & IHL Department</strong><br/>
+      Kenya Red Cross Society &mdash; Kirinyaga University Chapter
+    </p>
+  `;
+
+  return emailLayout({
+    title: `[Dissemination Bulletin] ${title}`,
+    preheader: `New Dissemination Module: "${title}" under ${category}. Explore Red Cross principles & IHL now.`,
+    content,
+  });
+}
+
+
+

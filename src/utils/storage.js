@@ -1,5 +1,6 @@
 import path from 'path';
 import crypto from 'crypto';
+import fs from 'fs';
 import { supabase } from '../../config/supabase.js';
 
 export const STORAGE_BUCKET = process.env.SUPABASE_BUCKET || process.env.SUPABASE_STORAGE_BUCKET || 'Store';
@@ -23,7 +24,8 @@ export const getFolderByMimeType = (mimetype) => {
 };
 
 /**
- * Upload a file buffer directly to the Supabase storage bucket
+ * Upload a file buffer directly to the Supabase storage bucket,
+ * falling back to local storage if bucket upload fails.
  * @param {Buffer} fileBuffer - The buffer of the file
  * @param {string} originalName - Original filename
  * @param {string} mimeType - File mimetype
@@ -41,27 +43,51 @@ export const uploadToSupabase = async (fileBuffer, originalName, mimeType, custo
   const fileName = `${Date.now()}-${randomStr}-${sanitizedBase}${ext}`;
   const filePath = `${folder}/${fileName}`;
 
-  const { data, error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(filePath, fileBuffer, {
-      contentType: mimeType,
-      upsert: true,
-    });
+  try {
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(filePath, fileBuffer, {
+        contentType: mimeType,
+        upsert: true,
+      });
 
-  if (error) {
-    throw new Error(`Supabase storage upload failed: ${error.message}`);
+    if (error) {
+      throw error;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(filePath);
+
+    return {
+      url: publicUrlData.publicUrl,
+      path: filePath,
+      bucket: STORAGE_BUCKET,
+      fileName,
+    };
+  } catch (error) {
+    console.warn(`Supabase upload failed (${error.message}). Saving file locally as fallback.`);
+    try {
+      const uploadsDir = path.resolve(process.cwd(), 'uploads', folder);
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const localFilePath = path.join(uploadsDir, fileName);
+      fs.writeFileSync(localFilePath, fileBuffer);
+
+      const serverBase = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const localUrl = `${serverBase.replace(/\/+$/, '')}/uploads/${folder}/${fileName}`;
+
+      return {
+        url: localUrl,
+        path: `uploads/${folder}/${fileName}`,
+        bucket: 'local',
+        fileName,
+      };
+    } catch (localErr) {
+      throw new Error(`Upload failed: ${error.message} (Local fallback also failed: ${localErr.message})`);
+    }
   }
-
-  const { data: publicUrlData } = supabase.storage
-    .from(STORAGE_BUCKET)
-    .getPublicUrl(filePath);
-
-  return {
-    url: publicUrlData.publicUrl,
-    path: filePath,
-    bucket: STORAGE_BUCKET,
-    fileName,
-  };
 };
 
 /**

@@ -61,102 +61,81 @@ export const getMyGallery = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Your gallery fetched.', (data || []).map(formatGallery));
 });
 
-// POST /api/v1/gallery/submit – Member submits a new gallery item (pending approval)
-export const submitGalleryItem = asyncHandler(async (req, res) => {
-  const { title, url, image_url, category, description, member_id, member_name, member_email, items } = req.body;
+// Helper to extract image URLs from flexible payload formats
+const extractImageUrls = (body) => {
+  const { images, items, image_url, url } = body;
+  const urls = [];
 
-  // Support array of items submitted in single request
-  if (Array.isArray(items) && items.length > 0) {
-    const records = items.map((it, idx) => ({
-      title: it.title || (title ? `${title} (${idx + 1})` : `Photo ${idx + 1}`),
-      image_url: it.image_url || it.url,
-      category: it.category || category || 'General',
-      description: it.description || description || '',
-      type: 'image',
-      status: 'pending',
-      submitted_by_member_id: member_id || it.member_id || null,
-      submitted_by_name: member_name || it.member_name || '',
-      submitted_by_email: member_email || it.member_email || '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })).filter(r => !!r.image_url);
-
-    if (!records.length) return sendError(res, 'No valid image URLs provided.', 400);
-
-    const { data, error } = await supabase
-      .from('gallery')
-      .insert(records)
-      .select();
-
-    if (error) return sendError(res, 'Failed to submit gallery items: ' + error.message, 400);
-    return sendSuccess(res, `${records.length} photo(s) submitted for admin review.`, (data || []).map(formatGallery), 201);
+  if (Array.isArray(images)) {
+    images.forEach(img => {
+      if (typeof img === 'string' && img.trim()) urls.push(img.trim());
+      else if (img?.url || img?.image_url) urls.push(img.image_url || img.url);
+    });
   }
 
-  const img = image_url || url;
-  if (!img) return sendError(res, 'Image URL is required.', 400);
+  if (Array.isArray(items)) {
+    items.forEach(it => {
+      if (typeof it === 'string' && it.trim()) urls.push(it.trim());
+      else if (it?.url || it?.image_url) urls.push(it.image_url || it.url);
+    });
+  }
 
-  const item = {
-    title: title || 'Submitted Photo',
-    image_url: img,
-    category: category || 'General',
-    description: description || '',
+  if (image_url || url) {
+    const single = (image_url || url).trim();
+    if (single && !urls.includes(single)) {
+      urls.push(single);
+    }
+  }
+
+  return urls;
+};
+
+// POST /api/v1/gallery/submit – Member submits 1 or more gallery items (pending approval)
+export const submitGalleryItem = asyncHandler(async (req, res) => {
+  const { title, category, description, member_id, member_name, member_email } = req.body;
+  const imageUrls = extractImageUrls(req.body);
+
+  if (!imageUrls.length) {
+    return sendError(res, 'At least one valid image is required.', 400);
+  }
+
+  const sharedTitle = (title && title.trim()) || 'Red Cross Photo';
+  const sharedDesc = description !== undefined ? description.trim() : '';
+  const sharedCategory = category || 'General';
+  const now = new Date().toISOString();
+
+  // Create an independent database record for each image
+  const records = imageUrls.map(imgUrl => ({
+    title: sharedTitle,
+    description: sharedDesc,
+    category: sharedCategory,
+    image_url: imgUrl,
     type: 'image',
     status: 'pending',
     submitted_by_member_id: member_id || null,
     submitted_by_name: member_name || '',
     submitted_by_email: member_email || '',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabase
-    .from('gallery')
-    .insert([item])
-    .select()
-    .single();
-
-  if (error) return sendError(res, 'Failed to submit gallery item: ' + error.message, 400);
-  return sendSuccess(res, 'Image submitted for admin review.', formatGallery(data), 201);
-});
-
-// POST /api/v1/gallery/submit-multiple – Explicit endpoint for multiple items
-export const submitMultipleGalleryItems = asyncHandler(async (req, res) => {
-  const { items, member_id, member_name, member_email, category, description } = req.body;
-  const itemsToInsert = Array.isArray(items) ? items : [req.body];
-
-  if (!itemsToInsert.length) {
-    return sendError(res, 'No items provided for submission.', 400);
-  }
-
-  const records = itemsToInsert.map((item, index) => {
-    const img = item.image_url || item.url;
-    return {
-      title: item.title || `Photo ${index + 1}`,
-      image_url: img,
-      category: item.category || category || 'General',
-      description: item.description || description || '',
-      type: 'image',
-      status: 'pending',
-      submitted_by_member_id: member_id || item.member_id || null,
-      submitted_by_name: member_name || item.member_name || '',
-      submitted_by_email: member_email || item.member_email || '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-  }).filter(r => !!r.image_url);
-
-  if (!records.length) {
-    return sendError(res, 'Image URLs are required for all items.', 400);
-  }
+    created_at: now,
+    updated_at: now,
+  }));
 
   const { data, error } = await supabase
     .from('gallery')
     .insert(records)
     .select();
 
-  if (error) return sendError(res, 'Failed to submit gallery items: ' + error.message, 400);
-  return sendSuccess(res, `${records.length} photo(s) submitted successfully for admin review.`, (data || []).map(formatGallery), 201);
+  if (error) return sendError(res, 'Failed to submit gallery photos: ' + error.message, 400);
+
+  return sendSuccess(
+    res,
+    `${records.length} photo(s) submitted for admin review.`,
+    (data || []).map(formatGallery),
+    201
+  );
 });
+
+// POST /api/v1/gallery/submit-multiple – Alias for batch submission
+export const submitMultipleGalleryItems = submitGalleryItem;
 
 // PATCH /api/v1/gallery/member/:id – Member edits their own gallery item
 export const updateMemberGalleryItem = asyncHandler(async (req, res) => {

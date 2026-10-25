@@ -806,63 +806,69 @@ export const getGallery = asyncHandler(async (req, res) => {
 });
 
 export const createGalleryItem = asyncHandler(async (req, res) => {
-  // Support batch creation if items array is provided
-  if (Array.isArray(req.body.items) && req.body.items.length > 0) {
-    const items = req.body.items.map(item => ({
-      title: item.title || 'New Photo',
-      image_url: item.image_url || item.url,
-      type: item.type || 'image',
-      category: item.category || 'General',
-      description: item.description || '',
-      status: 'approved',
-      is_favourite: item.is_favourite !== undefined ? item.is_favourite : false,
-      submitted_by: req.admin?.id || null,
-      approved_by: req.admin?.id || null,
-      submitted_by_name: 'Admin',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })).filter(i => i.image_url);
+  const { title, url, image_url, type, category, description, is_favourite, items, images } = req.body;
 
-    if (items.length === 0) {
-      return sendError(res, 'No valid images provided.', 400);
+  // Extract all image URLs from multiple potential formats
+  const imageUrls = [];
+  if (Array.isArray(images)) {
+    images.forEach(img => {
+      if (typeof img === 'string' && img.trim()) imageUrls.push(img.trim());
+      else if (img?.url || img?.image_url) imageUrls.push(img.image_url || img.url);
+    });
+  }
+  if (Array.isArray(items)) {
+    items.forEach(it => {
+      if (typeof it === 'string' && it.trim()) imageUrls.push(it.trim());
+      else if (it?.url || it?.image_url) imageUrls.push(it.image_url || it.url);
+    });
+  }
+  if (image_url || url) {
+    const single = (image_url || url).trim();
+    if (single && !imageUrls.includes(single)) {
+      imageUrls.push(single);
     }
-
-    const { data, error } = await supabase
-      .from('gallery')
-      .insert(items)
-      .select();
-
-    if (error) return sendError(res, 'Failed to create gallery items: ' + error.message, 400);
-    return sendSuccess(res, `${data.length} gallery items uploaded.`, data.map(formatGallery), 201);
   }
 
-  const { title, url, image_url, type, category, description, is_favourite } = req.body;
-  const img = image_url || url;
-  if (!img) return sendError(res, 'Image URL is required.', 400);
+  if (imageUrls.length === 0) {
+    return sendError(res, 'At least one valid image is required.', 400);
+  }
 
-  const item = {
-    title: title || 'New Photo',
-    image_url: img,
+  const sharedTitle = (title && title.trim()) || 'Red Cross Photo';
+  const sharedDesc = description !== undefined ? description.trim() : '';
+  const sharedCategory = category || 'General';
+  const sharedFav = is_favourite !== undefined ? !!is_favourite : false;
+  const adminId = req.admin?.id || null;
+  const now = new Date().toISOString();
+
+  // Insert each image as an independent record sharing title and description
+  const records = imageUrls.map(imgUrl => ({
+    title: sharedTitle,
+    image_url: imgUrl,
     type: type || 'image',
-    category: category || 'General',
-    description: description || '',
+    category: sharedCategory,
+    description: sharedDesc,
     status: 'approved',
-    is_favourite: is_favourite || false,
-    submitted_by: req.admin?.id || null,
-    approved_by: req.admin?.id || null,
+    is_favourite: sharedFav,
+    submitted_by: adminId,
+    approved_by: adminId,
     submitted_by_name: 'Admin',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+    created_at: now,
+    updated_at: now,
+  }));
 
   const { data, error } = await supabase
     .from('gallery')
-    .insert([item])
-    .select()
-    .single();
+    .insert(records)
+    .select();
 
-  if (error) return sendError(res, 'Failed to create gallery item: ' + error.message, 400);
-  return sendSuccess(res, 'Gallery item uploaded.', formatGallery(data), 201);
+  if (error) return sendError(res, 'Failed to create gallery item(s): ' + error.message, 400);
+
+  return sendSuccess(
+    res,
+    `${records.length} photo(s) added successfully.`,
+    (data || []).map(formatGallery),
+    201
+  );
 });
 
 export const updateGalleryItem = asyncHandler(async (req, res) => {

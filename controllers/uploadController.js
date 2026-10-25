@@ -7,11 +7,12 @@ import { asyncHandler } from '../src/utils/asyncHandler.js';
  * Upload a single file to Supabase storage bucket
  */
 export const uploadSingleFile = asyncHandler(async (req, res) => {
-  if (!req.file) {
+  const file = req.file || (req.files && req.files[0]);
+  if (!file) {
     return sendError(res, 'No file uploaded.', 400);
   }
 
-  const { buffer, originalname, mimetype, size } = req.file;
+  const { buffer, originalname, mimetype, size } = file;
   const folder = req.body.folder || null;
 
   try {
@@ -19,7 +20,7 @@ export const uploadSingleFile = asyncHandler(async (req, res) => {
 
     return sendSuccess(
       res,
-      'File uploaded successfully to Supabase storage.',
+      'File uploaded successfully.',
       {
         url: result.url,
         path: result.path,
@@ -41,30 +42,41 @@ export const uploadSingleFile = asyncHandler(async (req, res) => {
  * Upload multiple files to Supabase storage bucket
  */
 export const uploadMultipleFiles = asyncHandler(async (req, res) => {
-  if (!req.files || req.files.length === 0) {
+  const files = req.files && req.files.length > 0 ? req.files : (req.file ? [req.file] : []);
+  if (!files || files.length === 0) {
     return sendError(res, 'No files uploaded.', 400);
   }
 
   const folder = req.body.folder || null;
   const results = [];
+  const errors = [];
 
-  for (const file of req.files) {
-    const { buffer, originalname, mimetype, size } = file;
-    const result = await uploadToSupabase(buffer, originalname, mimetype, folder);
-    results.push({
-      url: result.url,
-      path: result.path,
-      bucket: result.bucket,
-      fileName: result.fileName,
-      originalname,
-      mimetype,
-      size,
-    });
+  for (const file of files) {
+    try {
+      const { buffer, originalname, mimetype, size } = file;
+      const result = await uploadToSupabase(buffer, originalname, mimetype, folder);
+      results.push({
+        url: result.url,
+        path: result.path,
+        bucket: result.bucket,
+        fileName: result.fileName,
+        originalname,
+        mimetype,
+        size,
+      });
+    } catch (err) {
+      console.error(`Failed to upload ${file.originalname}:`, err.message);
+      errors.push({ file: file.originalname, error: err.message });
+    }
+  }
+
+  if (results.length === 0) {
+    return sendError(res, `Upload failed for all files: ${errors.map(e => e.error).join(', ')}`, 500);
   }
 
   return sendSuccess(
     res,
-    `${results.length} file(s) uploaded successfully to Supabase storage.`,
+    `${results.length} file(s) uploaded successfully.`,
     results,
     201
   );

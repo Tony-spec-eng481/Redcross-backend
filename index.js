@@ -28,6 +28,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust reverse proxy headers (Render, Heroku, Cloudflare, Nginx) so client IP is accurately captured
+app.set('trust proxy', 1);
+
 // ═══════════════════════════════════════════════════════════
 // SECURITY & PARSING MIDDLEWARE
 // ═══════════════════════════════════════════════════════════
@@ -74,20 +77,30 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
-// Rate limiting
+// Stricter rate limit on auth endpoints (brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // 20 attempts per 15 min per IP
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
+});
+
+// General rate limiting (generous ceiling for SPA tab navigation and background polling)
 const limiter = rateLimit({
   windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW) || 15) * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 1000,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later.' },
 });
 app.use(limiter);
 
-// Stricter rate limit on auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
-});
+// Protect auth entry points with stricter authLimiter
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/register', authLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
